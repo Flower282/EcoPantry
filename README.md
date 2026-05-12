@@ -3,17 +3,46 @@
 - Email: user@exam.com
 - Password: 123456
 
-## Description on usage of tech from Units 1-5 
-- **Unit 1: JS/HTML/CSS**
-  - **HTML and JSX**: HTML was used primarily in the index.html file, serving as the entry point for our React application. However, JSX, which is a syntax extension of JavaScript and closely resembles HTML, was extensively utilized to define the structure and layout of our React components. Using JSX allowed us to write components in a way that combines HTML-like syntax with JavaScript logic, making the code more readable and maintainable. This approach enhanced the development experience by leveraging the power of JavaScript while maintaining the clarity of HTML.
-  - **CSS for Styling**: CSS was crucial for styling our React components, both directly and through the use of CSS-in-JS libraries such as ChakraUI. We applied custom styles to our components to enhance the user interface and ensure a consistent design across the application. This approach not only improved the visual appeal but also made the styling process more efficient
-  - **JavaScript Across the Stack**: JavaScript was the backbone of our entire project, driving both the client-side and server-side logic. On the client side, we used JavaScript extensively with React to create interactive user interfaces and manage state with Redux. On the server side, JavaScript powered our backend using Node.js and Express, handling API requests, routing, and server-side logic. JavaScript's versatility and extensive ecosystem made it an ideal choice for developing a full-stack web application, enabling us to use a single language across the entire stack and streamline the development process.
-    
-- **Unit 2: React/Redux**
-  - **React for Frontend Development**: We leveraged React for our frontend, using its component-based architecture to build a modular and maintainable user interface. React Router enabled efficient page routing, allowing smooth navigation without full page reloads, enhancing the user experience. Compared to traditional JavaScript frameworks like jQuery, React’s virtual DOM and declarative nature provided a more efficient and predictable way to build UIs, making our code easier to debug and maintain. Additionally, using the ChakraUI component library accelerated development with its out-of-the-box responsive components and comprehensive documentation, improving our development velocity and ease of troubleshooting.
-  - **Redux for State Management**: Redux was used for comprehensive state management across all pages, ensuring consistency and predictability in our application's behavior. We utilized thunks for handling asynchronous actions, allowing seamless API calls and state updates. While React’s Context API can manage state, Redux offers a more scalable solution for larger applications with complex state interactions. Its middleware capabilities (like thunks) enable more sophisticated state management, which would be more cumbersome to implement with the Context API alone.
- 
-- **Unit 3: NodeJS and Express**
-  - **Node.js for Server-Side Development**: Our application is powered by a Node.js server, leveraging its event-driven, non-blocking I/O model for efficient and scalable server-side operations. Node.js allowed us to use JavaScript across the entire stack, streamlining the development process. Compared to traditional server-side languages like PHP or Ruby, Node.js offers a more unified development experience.
-  - **Express for Routing and Middleware**: We utilized Express.js to handle routing and middleware in our application. Express.js provided a minimalistic yet powerful framework for creating server-side logic. We implemented authentication middleware to secure our routes, ensuring that only authorized users could access certain endpoints. This approach enhances security and aligns with best practices for web application development. Compared to more heavyweight frameworks like Django or Ruby on Rails, Express.js offers greater flexibility and simplicity, allowing us to build custom middleware and routing logic tailored to our needs. To maintain a clean and organized codebase, we separated our server logic into distinct route and controller files.
+## How to Run
+
+### Backend (Node.js + Express + Sequelize)
+1) Install dependencies:
+```bash
+cd backend
+npm install
+```
+
+2) Configure environment variables:
+- Copy template:
+```bash
+cp .env.template .env
+```
+- Update `.env` with your values:
+  - `DB_URL` (PostgreSQL connection string)
+  - `DB_CA_BASE64` (Base64 encoded CA certificate, required for SSL-managed Postgres)
+  - `JWT_SECRET`
+  - `OPENAI_API_KEY` (only needed for recipe generation)
+  - `PORT` (default `6390`)
+  - `CORS_ORIGIN` (default allows `http://localhost:5173`)
+
+3) Start the backend:
+```bash
+npm run start
+```
+
+Backend runs on `http://localhost:6390` by default.
+
+### Frontend (React + Vite)
+1) Install dependencies:
+```bash
+cd frontend
+npm install
+```
+
+2) Start the frontend:
+```bash
+npm run dev
+```
+
+Frontend runs on `http://localhost:5173` by default.
 
