@@ -1,78 +1,94 @@
-const mongoose = require("mongoose");
-const Schema = mongoose.Schema;
-
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const validator = require("validator");
 
-const IngredientSchema = require("./ingredientModel");
+module.exports = (sequelize, DataTypes) => {
+  const User = sequelize.define(
+    "User",
+    {
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        validate: {
+          notEmpty: true,
+        },
+      },
+      email: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+        validate: {
+          isEmail: true,
+        },
+      },
+      password_hash: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      dietary_preferences: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: "",
+      },
+      ingredients: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+      },
+    },
+    {
+      tableName: "users",
+      underscored: true,
+      timestamps: true,
+    },
+  );
 
-const userSchema = new Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  dietary_preferences: { type: String, required: false },
-  name: { type: String, required: false },
-  ingredients: { type: [IngredientSchema], required: true },
-});
+  User.signup = async function (email, password, name = "") {
+    if (!email || !password) {
+      throw Error("Email and password are required");
+    }
 
-// Signup Validator
-// Note: Followed Express Auth Tutorial https://www.youtube.com/@NetNinja
-// ============================================================================
-userSchema.statics.signup = async function (email, password) {
+    if (!validator.isEmail(email)) {
+      throw Error("Invalid email address");
+    }
 
-  if (!email || !password) {
-    throw Error("All fields must be filled");
-  }
+    const exists = await User.findOne({ where: { email } });
+    if (exists) {
+      throw Error("Email already in use");
+    }
 
-  if (!validator.isEmail(email)) {
-    throw Error("Email not valid");
-  }
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
 
-  // Enable password validation for real production scenarios
-  // if (!validator.isStrongPassword(password)) {
-  //     throw Error('Password not strong enough')
-  // }
+    return User.create({
+      name: name || email.split("@")[0],
+      email,
+      password_hash,
+    });
+  };
 
-  const exists = await this.findOne({ email });
+  User.login = async function (email, password) {
+    if (!email || !password) {
+      throw Error("Email and password are required");
+    }
 
-  if (exists) {
-    throw Error("Email already in use");
-  }
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      throw Error("Incorrect email or password");
+    }
 
-  const salt = await bcrypt.genSalt(10);
-  const hash = await bcrypt.hash(password, salt);
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      throw Error("Incorrect email or password");
+    }
 
-  const user = await this.create({
-    email,
-    password: hash,
-    dietary_preferences: "",
-    name: "New User",
-    ingredients: [],
-  });
+    return user;
+  };
 
-  return user;
+  User.prototype.toJSON = function () {
+    const values = { ...this.get() };
+    delete values.password_hash;
+    return values;
+  };
+
+  return User;
 };
-
-// Login Validator 
-// Note: Followed Express Auth Tutorial https://www.youtube.com/@NetNinja
-// ============================================================================
-userSchema.statics.login = async function (email, password) {
-
-  if (!email || !password) {
-    throw Error("All fields must be filled");
-  }
-
-  const user = await this.findOne({ email });
-
-  if (!user) {
-    throw Error("Incorrect Email");
-  }
-
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
-    throw Error("Incorrect Password");
-  }
-
-  return user;
-};
-
-module.exports = mongoose.model("User", userSchema);

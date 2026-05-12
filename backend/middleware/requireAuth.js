@@ -1,11 +1,7 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/userModel");
+const { User } = require("../models");
 
-// requireAuth Middleware
-// Note: Followed Express Auth Tutorial to implement middleware https://www.youtube.com/@NetNinja
-// ============================================================================
 const requireAuth = async (req, res, next) => {
-  // Verify that user is Authenticated
   const { authorization } = req.headers;
 
   if (!authorization) {
@@ -15,8 +11,13 @@ const requireAuth = async (req, res, next) => {
   const token = authorization.split(" ")[1];
 
   try {
-    const { _id } = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findOne({ _id }).select("_id");
+    const { id } = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findByPk(id, { attributes: ["id"] });
+    if (!user) {
+      return res.status(401).json({ error: "Request is not Authorized" });
+    }
+
+    req.user = { id: user.id };
     next();
   } catch (error) {
     console.log(error);

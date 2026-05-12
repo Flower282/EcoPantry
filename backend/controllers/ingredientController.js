@@ -1,21 +1,13 @@
 require("dotenv").config();
-const User = require("../models/userModel");
-const mongoose = require("mongoose");
+const { User } = require("../models");
 const fs = require("fs");
-const OpenAI = require("openai");
+// const OpenAI = require("openai");
 
-const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API_KEY });
+// const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API_KEY });
 
-// getIngredients Handler
-// ============================================================================
 const getIngredients = async (req, res) => {
-  const user_uuid = req.user._id;
-
-  if (!mongoose.Types.ObjectId.isValid(user_uuid)) {
-    return res.status(404).json({ error: "No such user" });
-  }
-
-  const user = await User.findById(user_uuid);
+  const user_uuid = req.user.id;
+  const user = await User.findByPk(user_uuid);
 
   if (!user) {
     return res.status(404).json({ error: "User not Found" });
@@ -24,140 +16,79 @@ const getIngredients = async (req, res) => {
   res.status(200).json({ ingredients: user.ingredients });
 };
 
-
-// updateIngredients Handler
-// ============================================================================
 const updateIngredients = async (req, res) => {
-  const user_uuid = req.user._id;
+  const user_uuid = req.user.id;
   const { ingredients } = req.body;
 
-  if (!mongoose.Types.ObjectId.isValid(user_uuid)) {
-    return res.status(404).json({ error: "No such user" });
-  }
-
-  const user = await User.findById(user_uuid);
-
+  const user = await User.findByPk(user_uuid);
   if (!user) {
     return res.status(404).json({ error: "User not Found" });
   }
 
-  await User.findOneAndUpdate(
-    { _id: user_uuid },
-    { $set: { ingredients: ingredients } },
-  );
-
-  const user2 = await User.findById(user_uuid);
-
-  res.status(200).json({ ingredients: user2.ingredients });
+  await user.update({ ingredients });
+  res.status(200).json({ ingredients: user.ingredients });
 };
 
-
-// generateIngredients Handler and Helpers
-// ============================================================================
 function convertImageToBase64(filePath) {
   return new Promise((resolve, reject) => {
     fs.readFile(filePath, (err, data) => {
       if (err) {
         reject(err);
       } else {
-        // Convert to base64
-        const base64 = data.toString("base64");
-        resolve(base64);
+        resolve(data.toString("base64"));
       }
     });
   });
 }
 
 const generateIngredients = async (req, res) => {
-  const user_uuid = req.user._id;
+  const user_uuid = req.user.id;
   const file_info = req.files[0];
+  const user = await User.findByPk(user_uuid);
 
-  if (!mongoose.Types.ObjectId.isValid(user_uuid)) {
-    return res.status(404).json({ error: "No such user" });
+  if (!user) {
+    return res.status(404).json({ error: "User not Found" });
   }
 
   try {
-    //Read base64 image received
     const base64Image = await convertImageToBase64(file_info.path);
+    // OpenAI ingredient generation has been disabled.
+    // const response = await openai.chat.completions.create({
+    //   model: "gpt-4o",
+    //   response_format: {
+    //     type: "json_object",
+    //   },
+    //   messages: [
+    //     {
+    //       role: "user",
+    //       content: [
+    //         {
+    //           type: "text",
+    //           text: `This is an image of a fridge, cupboard, or pantry. Please list the ingredients you see...`,
+    //         },
+    //         {
+    //           type: "image_url",
+    //           image_url: {
+    //             url: "data:" + file_info.mimetype + ";base64," + base64Image,
+    //           },
+    //         },
+    //       ],
+    //     },
+    //   ],
+    // });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      response_format: {
-        type: "json_object",
-      },
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `This is an image of a fridge, cupboard, or pantry. Please list the ingredients you see. Include all relevant information that you can see and follow this JSON scheme EXACTLY:   
-                              items: [
-                                  {
-                                      name: "Flour",
-                                      quantity: 2,
-                                      unit: "cups",
-                                      notes: "All-purpose flour"
-                                  },
-                                  {
-                                      name: "Sugar",
-                                      quantity: 1,
-                                      unit: "cup",
-                                      notes: "Granulated white sugar"
-                                  },
-                                  {
-                                      name: "Oranges",
-                                      quantity: 5,
-                                      unit: "",
-                                      notes: "Baby, Fresh"
-                                  },
-                                  {
-                                      name: "Butter",
-                                      quantity: 0.5,
-                                      unit: "cup",
-                                      notes: "Unsalted, melted"
-                                  },
-                                  {
-                                      name: "Eggs",
-                                      quantity: 2,
-                                      unit: "pieces",
-                                      notes: "Large"
-                                  }
-                              ]
-                          `,
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: "data:" + file_info.mimetype + ";base64," + base64Image,
-              },
-            },
-          ],
-        },
-      ],
-    });
-
-    const user = await User.findById(user_uuid);
-    const ingredients = JSON.parse(response.choices[0].message.content).items;
-
-    if (!user) {
-      return res.status(404).json({ error: "User not Found" });
-    }
-
-    await User.findOneAndUpdate(
-      { _id: user_uuid },
-      { $set: { ingredients: ingredients.concat(user.ingredients) } },
-    );
-
-    const user_updated = await User.findById(user_uuid);
+    // const ingredients = JSON.parse(response.choices[0].message.content).items;
+    // await user.update({ ingredients: ingredients.concat(user.ingredients) });
+    // const user_updated = await User.findByPk(user_uuid);
 
     fs.unlink(req.files[0].path, (err) => {
       if (err) throw err;
       console.log("temp file was deleted");
     });
 
-    console.log("Ingredients generated successfully");
-    res.status(200).json({ ingredients: user_updated.ingredients });
+    return res
+      .status(501)
+      .json({ error: "Ingredient generation via OpenAI is disabled." });
   } catch (error) {
     console.error("Error generating ingredients:", error);
     res.status(500).send("Error generating ingredients");

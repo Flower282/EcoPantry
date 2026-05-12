@@ -11,6 +11,7 @@ const recipesRouter = require("./routes/recipes");
 const ingredientsRouter = require("./routes/ingredients");
 const preferencesRouter = require("./routes/preferences");
 const publicRouter = require("./routes/public");
+const db = require("./models");
 
 // Initialise Express
 // ============================================================================
@@ -55,13 +56,20 @@ app.use("/api/public", publicRouter);
 
 // Database Connection and Server Start
 // ============================================================================
-const startServer = () => {
+const PORT = process.env.PORT || 6390;
+
+const startServer = async () => {
   if (process.env.NODE_ENV !== "test") {
-    connectToDb().then(() => {
-      app.listen(process.env.PORT, () => {
-        console.log("Listening on Port: ", process.env.PORT);
+    try {
+      await connectToDb();
+      await db.sequelize.sync();
+      app.listen(PORT, () => {
+        console.log("Listening on Port:", PORT);
       });
-    });
+    } catch (error) {
+      console.error("Unable to start server:", error);
+      process.exit(1);
+    }
   }
 };
 
