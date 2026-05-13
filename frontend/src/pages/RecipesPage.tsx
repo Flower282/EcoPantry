@@ -171,7 +171,7 @@ function DifficultyBadge({ level }: { level: Difficulty }) {
   );
 }
 
-export function RecipesTab() {
+export function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [category, setCategory] = useState<Category>('personal');
   const [searchQuery, setSearchQuery] = useState('');

@@ -1,60 +1,7 @@
-import { useState } from 'react';
-import { toast } from 'sonner';
-
-interface ShoppingItem {
-  id: number;
-  name: string;
-  category: string;
-  checked: boolean;
-  quantity: string;          // target, e.g. "400g", "3 củ"
-  actualQuantity?: string;   // actual purchased, set on confirm
-  note?: string;
-  addedBy: string;
-}
-
-/* ── Quantity parsing ────────────────────────────────────
-   Splits a string like "400g", "1.5kg", "3 củ" into
-   { value: number, unit: string }. Returns null if not parseable. */
-function parseQty(s: string): { value: number; unit: string } | null {
-  const m = s.trim().match(/^([\d.,]+)\s*([a-zA-ZÀ-ỹ%]+.*)?$/);
-  if (!m) return null;
-  const value = parseFloat(m[1].replace(',', '.'));
-  if (isNaN(value)) return null;
-  const unit = (m[2] || '').trim().toLowerCase();
-  return { value, unit };
-}
-
-/* Normalise weight/volume units to grams or ml for comparison */
-function normaliseWeight(v: number, unit: string): { value: number; base: 'g' | 'ml' | 'other'; display: string } {
-  const u = unit.toLowerCase();
-  if (u === 'kg')      return { value: v * 1000, base: 'g',  display: 'g' };
-  if (u === 'g')       return { value: v,        base: 'g',  display: 'g' };
-  if (u === 'l')       return { value: v * 1000, base: 'ml', display: 'ml' };
-  if (u === 'ml')      return { value: v,        base: 'ml', display: 'ml' };
-  return { value: v, base: 'other', display: u };
-}
-
-type Diff = 'match' | 'under' | 'over';
-function compareQty(target: string, actual: string): { diff: Diff; deltaText: string } | null {
-  const t = parseQty(target);
-  const a = parseQty(actual);
-  if (!t || !a) return null;
-  const tn = normaliseWeight(t.value, t.unit);
-  const an = normaliseWeight(a.value, a.unit);
-  if (tn.base !== an.base || tn.base === 'other' && t.unit !== a.unit) {
-    // Different unit families — fall back to raw value compare
-    if (a.value === t.value) return { diff: 'match', deltaText: '' };
-    return a.value < t.value
-      ? { diff: 'under', deltaText: `−${(t.value - a.value).toLocaleString('vi-VN')} ${t.unit}` }
-      : { diff: 'over',  deltaText: `+${(a.value - t.value).toLocaleString('vi-VN')} ${a.unit}` };
-  }
-  if (an.value === tn.value) return { diff: 'match', deltaText: '' };
-  const delta = Math.abs(an.value - tn.value);
-  const deltaText = `${delta.toLocaleString('vi-VN')} ${an.display}`;
-  return an.value < tn.value
-    ? { diff: 'under', deltaText: `−${deltaText}` }
-    : { diff: 'over',  deltaText: `+${deltaText}` };
-}
+import type { Diff } from "@/lib/quantity";
+import { compareQty, parseQty } from "@/lib/quantity";
+import { useShoppingList } from "@/hooks/useShoppingList";
+import type { ShoppingCategory } from "@/stores/shoppingListStore";
 
 const familyMembers = [
   { initials: 'B',  name: 'Bạn', color: 'from-green-400 to-green-600',   online: true },
@@ -62,23 +9,6 @@ const familyMembers = [
   { initials: 'Ba', name: 'Ba',  color: 'from-blue-400 to-blue-600',     online: false },
   { initials: 'C',  name: 'Chị', color: 'from-purple-400 to-purple-600', online: true },
 ];
-
-const initialItems: ShoppingItem[] = [
-  { id: 1, name: 'Bánh tráng', category: 'Thực phẩm khô', checked: false, quantity: '1 gói', addedBy: 'Bạn' },
-  { id: 2, name: 'Bún tươi', category: 'Thực phẩm khô', checked: false, quantity: '300g', addedBy: 'Bạn' },
-  { id: 3, name: 'Đậu phộng rang', category: 'Thực phẩm khô', checked: true, quantity: '100g', actualQuantity: '100g', addedBy: 'Mẹ' },
-  { id: 4, name: 'Cà rốt', category: 'Rau củ', checked: false, quantity: '3 củ', addedBy: 'Bạn' },
-  { id: 5, name: 'Khoai tây', category: 'Rau củ', checked: true, quantity: '500g', actualQuantity: '450g', addedBy: 'Chị' },
-  { id: 6, name: 'Cải xanh', category: 'Rau củ', checked: false, quantity: '1 bó', note: 'Loại không phun thuốc', addedBy: 'Mẹ' },
-  { id: 7, name: 'Thịt bò Mỹ', category: 'Thịt cá', checked: false, quantity: '400g', addedBy: 'Ba' },
-  { id: 8, name: 'Cá hồi tươi', category: 'Thịt cá', checked: false, quantity: '300g', note: 'Loại phi lê', addedBy: 'Bạn' },
-  { id: 9, name: 'Tôm sú', category: 'Thịt cá', checked: true, quantity: '200g', actualQuantity: '250g', addedBy: 'Mẹ' },
-  { id: 10, name: 'Nước mắm Phú Quốc', category: 'Gia vị', checked: true, quantity: '1 chai', actualQuantity: '1 chai', addedBy: 'Mẹ' },
-  { id: 11, name: 'Dầu ô liu', category: 'Gia vị', checked: false, quantity: '250ml', addedBy: 'Chị' },
-  { id: 12, name: 'Sả tươi', category: 'Gia vị', checked: false, quantity: '1 bó', addedBy: 'Bạn' },
-];
-
-const categories = ['Rau củ', 'Thịt cá', 'Thực phẩm khô', 'Gia vị'];
 
 /* Small visual badge for diff state */
 function DiffBadge({ diff, deltaText }: { diff: Diff; deltaText: string }) {
@@ -99,134 +29,41 @@ function DiffBadge({ diff, deltaText }: { diff: Diff; deltaText: string }) {
   );
 }
 
-export function ShoppingTab() {
-  const [items, setItems] = useState<ShoppingItem[]>(initialItems);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemQty, setNewItemQty] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState('Rau củ');
-  const [addingItem, setAddingItem] = useState(false);
-  const [completed, setCompleted] = useState(false);
+export function ShoppingPage() {
+  const {
+    items,
+    categories,
+    itemsByCategory,
+    categorySummary,
+    checkedCount,
+    totalCount,
+    progress,
+    diffStats,
 
-  // Weight-adjust state: which item is currently being adjusted + draft value
-  const [adjustingId, setAdjustingId] = useState<number | null>(null);
-  const [adjustValue, setAdjustValue] = useState('');
+    addingItem,
+    setAddingItem,
+    completed,
+    adjustingId,
+    adjustValue,
+    setAdjustValue,
 
-  const startAdjust = (item: ShoppingItem) => {
-    setAdjustingId(item.id);
-    setAdjustValue(item.actualQuantity ?? item.quantity);
-  };
+    newItemName,
+    setNewItemName,
+    newItemQty,
+    setNewItemQty,
+    newItemCategory,
+    setNewItemCategory,
 
-  const cancelAdjust = () => {
-    setAdjustingId(null);
-    setAdjustValue('');
-  };
-
-  const confirmAdjust = (id: number) => {
-    const value = adjustValue.trim();
-    if (!value) { toast.error('Vui lòng nhập số lượng thực tế'); return; }
-    setItems(prev => prev.map(i => i.id === id ? { ...i, checked: true, actualQuantity: value } : i));
-    const it = items.find(i => i.id === id);
-    if (it) {
-      const cmp = compareQty(it.quantity, value);
-      if (cmp?.diff === 'match')      toast.success(`Đã mua đủ "${it.name}"`);
-      else if (cmp?.diff === 'under') toast.warning(`"${it.name}" mua thiếu ${cmp.deltaText}`);
-      else if (cmp?.diff === 'over')  toast.info(`"${it.name}" mua dư ${cmp.deltaText}`);
-      else                            toast.success(`Đã đánh dấu "${it.name}"`);
-    }
-    setAdjustingId(null);
-    setAdjustValue('');
-  };
-
-  const uncheckItem = (id: number) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, checked: false, actualQuantity: undefined } : i));
-  };
-
-  const handleCheckboxClick = (item: ShoppingItem) => {
-    if (item.checked) { uncheckItem(item.id); return; }
-    if (adjustingId === item.id) cancelAdjust();
-    else startAdjust(item);
-  };
-
-  const deleteItem = (id: number, name: string) => {
-    setItems(prev => prev.filter(item => item.id !== id));
-    toast.success(`Đã xoá "${name}" khỏi danh sách`);
-  };
-
-  const addItem = () => {
-    if (!newItemName.trim()) return;
-    const newItem: ShoppingItem = {
-      id: Date.now(),
-      name: newItemName.trim(),
-      category: newItemCategory,
-      checked: false,
-      quantity: newItemQty.trim() || '1',
-      addedBy: 'Bạn',
-    };
-    setItems(prev => [...prev, newItem]);
-    toast.success(`Đã thêm "${newItem.name}" vào ${newItemCategory}`);
-    setNewItemName('');
-    setNewItemQty('');
-    setAddingItem(false);
-  };
-
-  const handleShare = async () => {
-    const text = `Danh sách đi chợ EcoPantry:\n${items.map(i => `- ${i.name} (${i.quantity})`).join('\n')}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Danh sách đi chợ', text });
-      } else {
-        await navigator.clipboard.writeText(text);
-        toast.success('Đã sao chép danh sách vào clipboard');
-      }
-    } catch {
-      toast.error('Không thể chia sẻ');
-    }
-  };
-
-  const itemsByCategory = categories
-    .map(cat => ({ category: cat, items: items.filter(i => i.category === cat) }))
-    .filter(g => g.items.length > 0);
-
-  const checkedCount = items.filter(i => i.checked).length;
-  const totalCount = items.length;
-  const progress = totalCount > 0 ? (checkedCount / totalCount) * 100 : 0;
-
-  /* ── Weight-aware category summary ──
-     For each category, aggregate target vs. actual by unit family (g / ml / other) */
-  const categorySummary = categories.map((cat) => {
-    const catItems = items.filter(i => i.category === cat);
-    if (catItems.length === 0) return null;
-
-    const totals: Record<string, { target: number; actual: number; checked: boolean }> = {};
-    for (const it of catItems) {
-      const t = parseQty(it.quantity);
-      if (!t) continue;
-      const tn = normaliseWeight(t.value, t.unit);
-      const key = tn.display;
-      if (!totals[key]) totals[key] = { target: 0, actual: 0, checked: true };
-      totals[key].target += tn.value;
-      if (it.checked && it.actualQuantity) {
-        const a = parseQty(it.actualQuantity);
-        if (a) {
-          const an = normaliseWeight(a.value, a.unit);
-          if (an.display === key) totals[key].actual += an.value;
-        }
-      } else if (it.checked) {
-        totals[key].actual += tn.value;
-      } else {
-        totals[key].checked = false;
-      }
-    }
-
-    return {
-      category: cat,
-      done: catItems.filter(i => i.checked).length,
-      total: catItems.length,
-      weights: Object.entries(totals)
-        .filter(([, v]) => v.target > 0)
-        .map(([unit, v]) => ({ unit, target: v.target, actual: v.actual })),
-    };
-  }).filter(Boolean) as { category: string; done: number; total: number; weights: { unit: string; target: number; actual: number }[] }[];
+    startAdjust,
+    cancelAdjust,
+    confirmAdjust,
+    handleCheckboxClick,
+    deleteItem,
+    addItem,
+    handleShare,
+    completeShopping,
+    startNewList,
+  } = useShoppingList();
 
   if (completed) {
     return (
@@ -241,7 +78,7 @@ export function ShoppingTab() {
           </p>
         </div>
         <button
-          onClick={() => { setItems(prev => prev.map(i => ({ ...i, checked: false, actualQuantity: undefined }))); setCompleted(false); toast.info('Đã khởi tạo danh sách mới'); }}
+          onClick={startNewList}
           className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           style={{ fontSize: '0.85rem', fontWeight: 500 }}
         >
@@ -320,7 +157,7 @@ export function ShoppingTab() {
                   </div>
 
                   <div className="divide-y divide-gray-50">
-                    {catItems.map((item) => {
+                      {catItems.map((item) => {
                       const cmp = item.actualQuantity ? compareQty(item.quantity, item.actualQuantity) : null;
                       const isAdjusting = adjustingId === item.id;
                       return (
@@ -494,11 +331,11 @@ export function ShoppingTab() {
                 />
                 <select
                   value={newItemCategory}
-                  onChange={(e) => setNewItemCategory(e.target.value)}
+                  onChange={(e) => setNewItemCategory(e.target.value as ShoppingCategory)}
                   className="px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-200 text-gray-700"
                   style={{ fontSize: '0.8rem' }}
                 >
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="flex gap-2">
@@ -574,39 +411,26 @@ export function ShoppingTab() {
             <span className="text-gray-500" style={{ fontSize: '0.78rem' }}>Còn lại</span>
             <span className="text-orange-600" style={{ fontSize: '0.78rem', fontWeight: 600 }}>{totalCount - checkedCount} mặt hàng</span>
           </div>
-          {(() => {
-            // Aggregate diff stats across all checked items
-            let under = 0, over = 0, match = 0;
-            for (const it of items) {
-              if (!it.checked || !it.actualQuantity) continue;
-              const c = compareQty(it.quantity, it.actualQuantity);
-              if (!c) continue;
-              if (c.diff === 'under') under++;
-              else if (c.diff === 'over') over++;
-              else match++;
-            }
-            if (under + over + match === 0) return null;
-            return (
-              <div className="pt-2 border-t border-gray-50 space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-500" style={{ fontSize: '0.72rem' }}>Đủ định lượng</span>
-                  <span className="text-green-600" style={{ fontSize: '0.72rem', fontWeight: 600 }}>{match}</span>
-                </div>
-                {under > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500" style={{ fontSize: '0.72rem' }}>⚠ Thiếu</span>
-                    <span className="text-yellow-700" style={{ fontSize: '0.72rem', fontWeight: 600 }}>{under}</span>
-                  </div>
-                )}
-                {over > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500" style={{ fontSize: '0.72rem' }}>+ Dư</span>
-                    <span className="text-blue-700" style={{ fontSize: '0.72rem', fontWeight: 600 }}>{over}</span>
-                  </div>
-                )}
+          {(diffStats.under + diffStats.over + diffStats.match) > 0 && (
+            <div className="pt-2 border-t border-gray-50 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-500" style={{ fontSize: '0.72rem' }}>Đủ định lượng</span>
+                <span className="text-green-600" style={{ fontSize: '0.72rem', fontWeight: 600 }}>{diffStats.match}</span>
               </div>
-            );
-          })()}
+              {diffStats.under > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500" style={{ fontSize: '0.72rem' }}>⚠ Thiếu</span>
+                  <span className="text-yellow-700" style={{ fontSize: '0.72rem', fontWeight: 600 }}>{diffStats.under}</span>
+                </div>
+              )}
+              {diffStats.over > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500" style={{ fontSize: '0.72rem' }}>+ Dư</span>
+                  <span className="text-blue-700" style={{ fontSize: '0.72rem', fontWeight: 600 }}>{diffStats.over}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="bg-green-50 rounded-xl border border-green-100 p-3 space-y-2">
@@ -627,7 +451,7 @@ export function ShoppingTab() {
         <div className="flex-1" />
 
         <button
-          onClick={() => { setCompleted(true); toast.success(`${checkedCount} mặt hàng đã chuyển vào Kho thực phẩm`); }}
+          onClick={completeShopping}
           disabled={checkedCount === 0}
           className={`w-full p-4 rounded-xl transition-all ${checkedCount > 0 ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
           style={{ fontSize: '0.85rem', fontWeight: 600 }}

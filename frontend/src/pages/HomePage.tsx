@@ -5,9 +5,9 @@ import {
   Sparkles, Flame, Leaf, Sun, Sandwich, Moon, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { TabType } from '../App';
+import type { TabType } from '@/lib/tabs';
 
-interface HomeTabProps {
+interface HomePageProps {
   onNavigate: (tab: TabType) => void;
 }
 
@@ -76,7 +76,7 @@ const scheduled_meals: ScheduledMeal[] = [
 ];
 
 /* ── Component ────────────────────────────────────── */
-export function HomeTab({ onNavigate }: HomeTabProps) {
+export function HomePage({ onNavigate }: HomePageProps) {
   const [expiring] = useState(initialExpiring);
   const [meals, setMeals] = useState(scheduled_meals);
 

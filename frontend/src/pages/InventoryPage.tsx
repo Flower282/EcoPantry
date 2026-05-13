@@ -83,7 +83,7 @@ function StatusBadge({ status, daysLeft }: { status: FoodItem['status']; daysLef
   return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full" style={{ fontSize: '0.65rem', fontWeight: 600 }}>Tốt</span>;
 }
 
-export function InventoryTab() {
+export function InventoryPage() {
   const [items, setItems] = useState<FoodItem[]>(initialItems);
   const [selectedStorage, setSelectedStorage] = useState<StorageArea>('cold');
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
