@@ -227,7 +227,7 @@ function todayKey(): Day {
 ───────────────────────────────────────────────── */
 interface SlotConfig { id: Slot; label: string; time: string; removable: boolean }
 
-export function MealPlanner() {
+export function MealPlannerPage() {
   const [view, setView] = useState<'daily' | 'weekly'>('weekly');
   const [activeDay, setActiveDay] = useState<Day>(todayKey());
   const [plan, setPlan] = useState<Plan>(emptyPlan);

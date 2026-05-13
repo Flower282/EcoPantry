@@ -1,15 +1,16 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useState } from 'react';
+import type { ElementType, FormEvent } from 'react';
 import { Home, Refrigerator, ChefHat, ShoppingCart, Search, Bell, Leaf, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { HomeTab } from './components/HomeTab';
-import { InventoryTab } from './components/InventoryTab';
-import { RecipesTab } from './components/RecipesTab';
-import { ShoppingTab } from './components/ShoppingTab';
-import { MealPlanner } from './components/MealPlanner';
+import { useClickOutside } from '@/hooks/useClickOutside';
+import type { TabType } from '@/lib/tabs';
+import { HomePage } from '@/pages/HomePage';
+import { InventoryPage } from '@/pages/InventoryPage';
+import { MealPlannerPage } from '@/pages/MealPlannerPage';
+import { RecipesPage } from '@/pages/RecipesPage';
+import { ShoppingPage } from '@/pages/ShoppingPage';
 
-export type TabType = 'home' | 'inventory' | 'recipes' | 'planner' | 'shopping';
-
-const navItems: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
+const navItems: { id: TabType; label: string; icon: ElementType; badge?: number }[] = [
   { id: 'home',      label: 'Trang chủ',     icon: Home },
   { id: 'inventory', label: 'Kho thực phẩm', icon: Refrigerator, badge: 4 },
   { id: 'recipes',   label: 'Công thức',     icon: ChefHat },
@@ -41,18 +42,12 @@ export default function App() {
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  useClickOutside(notifRef, () => setNotifOpen(false), notifOpen);
+  useClickOutside(profileRef, () => setProfileOpen(false), profileOpen);
 
   const currentPage = pageTitles[activeTab];
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     toast.info(`Đang tìm kiếm: "${searchQuery}"`);
@@ -339,11 +334,11 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-auto">
-          {activeTab === 'home'      && <HomeTab onNavigate={setActiveTab} />}
-          {activeTab === 'inventory' && <InventoryTab />}
-          {activeTab === 'recipes'   && <RecipesTab />}
-          {activeTab === 'planner'   && <MealPlanner />}
-          {activeTab === 'shopping'  && <ShoppingTab />}
+          {activeTab === 'home'      && <HomePage onNavigate={setActiveTab} />}
+          {activeTab === 'inventory' && <InventoryPage />}
+          {activeTab === 'recipes'   && <RecipesPage />}
+          {activeTab === 'planner'   && <MealPlannerPage />}
+          {activeTab === 'shopping'  && <ShoppingPage />}
         </main>
       </div>
     </div>
