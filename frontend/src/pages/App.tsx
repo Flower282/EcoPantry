@@ -59,6 +59,8 @@ export default function App() {
 
       {/* SIDEBAR */}
       <aside
+        onMouseEnter={() => setCollapsed(false)}
+        onMouseLeave={() => setCollapsed(true)}
         className="relative flex flex-col bg-white border-r border-slate-200 shrink-0 overflow-visible"
         style={{
           width: collapsed ? '64px' : '256px',
