@@ -11,6 +11,8 @@ const recipesRouter = require("./routes/recipes");
 const ingredientsRouter = require("./routes/ingredients");
 const preferencesRouter = require("./routes/preferences");
 const publicRouter = require("./routes/public");
+const shoppingListRouter = require("./routes/shoppingList");
+const mealPlansRouter = require("./routes/mealPlans");
 const db = require("./models");
 
 // Initialise Express
@@ -53,6 +55,8 @@ app.use("/api/ingredients", ingredientsRouter);
 app.use("/api/recipes", recipesRouter);
 app.use("/api/preferences", preferencesRouter);
 app.use("/api/public", publicRouter);
+app.use("/api/shopping", shoppingListRouter);
+app.use("/api/meal-plans", mealPlansRouter);
 
 // Database Connection and Server Start
 // ============================================================================

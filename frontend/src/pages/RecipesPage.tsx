@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Search, Plus, Sparkles, Clock, Users, Flame, ChefHat,
   Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, X, Heart,
-  Filter, Star, ArrowRight, Wand2,
+  Filter, Star, ArrowRight, Wand2, Loader2,
 } from 'lucide-react';
+import { recipesApi, type RecipeItem } from '@/lib/api';
 
 type Difficulty = 'Dễ' | 'Trung bình' | 'Khó';
 type Category = 'personal' | 'community';
@@ -173,6 +174,7 @@ function DifficultyBadge({ level }: { level: Difficulty }) {
 
 export function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
+  const [isLoading, setIsLoading] = useState(false);
   const [category, setCategory] = useState<Category>('personal');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number>(initialRecipes[0].id);
@@ -183,6 +185,47 @@ export function RecipesPage() {
   // Forms
   const [addOpen, setAddOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+
+  // Fetch saved recipes from API and merge with local
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      setIsLoading(true);
+      try {
+        const apiRecipes: RecipeItem[] = await recipesApi.getAll();
+        const mapped: Recipe[] = apiRecipes.map((r) => ({
+          id: r.id,
+          name: r.title,
+          category: 'personal' as Category,
+          author: r.created_by_name || undefined,
+          servings: r.ingredients?.[0]?.unit || '4 người',
+          time: '30 phút',
+          difficulty: 'Dễ' as Difficulty,
+          calories: '— kcal',
+          readyPercent: 100,
+          rating: 0,
+          image: r.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
+          ingredients: (r.ingredients || []).map((ing: { name: string; quantity: string; unit?: string }) => ({
+            name: ing.name,
+            amount: `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}`,
+            available: true,
+          })),
+          steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
+          tags: r.tags || [],
+        }));
+        // Keep community recipes, replace personal with API data if any
+        if (mapped.length > 0) {
+          setRecipes((prev) => [
+            ...mapped,
+            ...prev.filter((r) => r.category === 'community'),
+          ]);
+          setSelectedId(mapped[0].id);
+          setBookmarked(new Set(mapped.map((r) => r.id)));
+        }
+      } catch { /* use local data if API fails */ }
+      finally { setIsLoading(false); }
+    };
+    fetchRecipes();
+  }, []);
 
   /* ── Derived ───────────────────────────────── */
   const visibleList = useMemo(() => {
@@ -216,7 +259,7 @@ export function RecipesPage() {
     toast.info('Bắt đầu nấu — chúc ngon miệng!');
   };
 
-  const handleCreateRecipe = (data: NewRecipeData) => {
+  const handleCreateRecipe = async (data: NewRecipeData) => {
     const id = Date.now();
     const ingredients: Ingredient[] = data.ingredients
       .split('\n')
@@ -248,6 +291,18 @@ export function RecipesPage() {
     setSelectedId(id);
     setAddOpen(false);
     toast.success(`Đã tạo công thức "${data.name}"`);
+
+    // Sync to API
+    try {
+      await recipesApi.add({
+        title: data.name,
+        instructions: steps.join('\n'),
+        image_url: data.image || '',
+        ingredients: ingredients.map((ing) => ({ name: ing.name, quantity: ing.amount, unit: '' })),
+        user_uuid: 0,
+        created_by_name: '',
+      });
+    } catch { /* silent — local state already updated */ }
   };
 
   const handleAISuggest = (requirements: string) => {
