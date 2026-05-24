@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Package, AlertCircle, ChefHat,
   Clock, Users, ArrowRight, Plus, ShoppingCart,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { TabType } from '@/lib/tabs';
+import { ingredientsApi, recipesApi, type IngredientItem, type RecipeItem } from '@/lib/api';
 
 interface HomePageProps {
   onNavigate: (tab: TabType) => void;
@@ -75,20 +76,55 @@ const scheduled_meals: ScheduledMeal[] = [
   },
 ];
 
-/* ── Component ────────────────────────────────────── */
+/* ── Component ──────────────────────────────────────────────── */
 export function HomePage({ onNavigate }: HomePageProps) {
-  const [expiring] = useState(initialExpiring);
+  const [expiring, setExpiring] = useState(initialExpiring);
   const [meals, setMeals] = useState(scheduled_meals);
+  const [totalItems, setTotalItems] = useState(42);
+  const [cookableCount, setCookableCount] = useState(8);
+
+  // Fetch real data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [ingredientData, apiRecipes] = await Promise.all([
+          ingredientsApi.getAll(),
+          recipesApi.getAll(),
+        ]);
+
+        const allItems: IngredientItem[] = ingredientData.ingredients || [];
+        setTotalItems(allItems.length);
+
+        // Expiring items (daysLeft <= 3)
+        const soonExpiring = allItems
+          .filter((i) => i.daysLeft >= 0 && i.daysLeft <= 3)
+          .slice(0, 3)
+          .map((i, idx) => ({
+            id: idx + 1,
+            name: i.name,
+            daysLeft: i.daysLeft,
+            quantity: `${i.quantity} ${i.unit}`,
+            emoji: i.emoji || '🥬',
+            storage: i.storage === 'cold' ? 'Ngăn mát' : i.storage === 'freezer' ? 'Ngăn đông' : 'Tủ đồ khô',
+          }));
+        if (soonExpiring.length > 0) setExpiring(soonExpiring);
+
+        // Cookable = all saved recipes
+        setCookableCount(apiRecipes.length);
+      } catch { /* use fallback data */ }
+    };
+    fetchData();
+  }, []);
 
   const markCooked = (id: number, name: string) => {
     setMeals(prev => prev.map(m => m.id === id ? { ...m, status: 'done' as const } : m));
     toast.success(`Đã đánh dấu "${name}" hoàn thành`);
   };
 
-  /* Metric cards ─ horizontal layout, slim */
+  /* Metric cards */
   const metrics = [
     {
-      label: 'Tổng thực phẩm', value: '42', unit: 'mặt hàng',
+      label: 'Tổng thực phẩm', value: totalItems.toString(), unit: 'mặt hàng',
       icon: Package, accent: 'text-emerald-700 bg-emerald-50 ring-emerald-100',
     },
     {
@@ -96,7 +132,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
       icon: AlertCircle, accent: 'text-amber-700 bg-amber-50 ring-amber-100',
     },
     {
-      label: 'Nấu ngay được', value: '8', unit: 'công thức',
+      label: 'Nấu ngay được', value: cookableCount.toString(), unit: 'công thức',
       icon: ChefHat, accent: 'text-teal-700 bg-teal-50 ring-teal-100',
     },
   ];

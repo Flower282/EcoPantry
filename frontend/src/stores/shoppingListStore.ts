@@ -39,6 +39,7 @@ type AddItemInput = Omit<ShoppingItem, "id"> & { id?: number };
 
 interface ShoppingListStore {
   items: ShoppingItem[];
+  setItems: (items: ShoppingItem[]) => void;
   addItem: (item: AddItemInput) => void;
   removeItem: (id: number) => void;
   confirmPurchase: (id: number, actualQuantity: string) => void;
@@ -47,7 +48,8 @@ interface ShoppingListStore {
 }
 
 export const useShoppingListStore = create<ShoppingListStore>((set) => ({
-  items: initialItems,
+  items: [],
+  setItems: (items) => set({ items }),
   addItem: (item) => {
     const id = item.id ?? Date.now();
     set((state) => ({ items: [...state.items, { ...item, id }] }));

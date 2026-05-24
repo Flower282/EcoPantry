@@ -25,6 +25,16 @@ module.exports = (sequelize, DataTypes) =>
         allowNull: false,
         defaultValue: false,
       },
+      category: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "",
+      },
+      emoji: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "🛒",
+      },
       updated_by: {
         type: DataTypes.INTEGER,
         allowNull: true,

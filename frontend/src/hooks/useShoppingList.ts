@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { compareQty, normaliseWeight, parseQty } from "@/lib/quantity";
@@ -8,9 +8,11 @@ import {
   type ShoppingItem,
   useShoppingListStore,
 } from "@/stores/shoppingListStore";
+import { shoppingApi } from "@/lib/api";
 
 export function useShoppingList() {
   const items = useShoppingListStore((s) => s.items);
+  const setItems = useShoppingListStore((s) => s.setItems);
   const addItemToStore = useShoppingListStore((s) => s.addItem);
   const removeItemFromStore = useShoppingListStore((s) => s.removeItem);
   const confirmPurchase = useShoppingListStore((s) => s.confirmPurchase);
@@ -22,9 +24,36 @@ export function useShoppingList() {
   const [newItemCategory, setNewItemCategory] = useState<ShoppingCategory>(shoppingCategories[0]);
   const [addingItem, setAddingItem] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
   const [adjustValue, setAdjustValue] = useState("");
+
+  // Fetch from API on mount
+  useEffect(() => {
+    const fetchItems = async () => {
+      setIsLoading(true);
+      try {
+        const apiItems = await shoppingApi.getAll();
+        const mapped: ShoppingItem[] = apiItems.map((item) => ({
+          id: item.id,
+          name: item.item_name,
+          category: (item.category as ShoppingCategory) || shoppingCategories[0],
+          checked: item.is_purchased,
+          quantity: `${item.quantity}${item.unit ? " " + item.unit : ""}`,
+          addedBy: "Bạn",
+          actualQuantity: undefined,
+          note: undefined,
+        }));
+        setItems(mapped);
+      } catch (err) {
+        toast.error("Không thể tải danh sách đi chợ: " + (err as Error).message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchItems();
+  }, [setItems]);
 
   const startAdjust = (item: ShoppingItem) => {
     setAdjustingId(item.id);
@@ -36,15 +65,17 @@ export function useShoppingList() {
     setAdjustValue("");
   };
 
-  const confirmAdjust = (id: number) => {
+  const confirmAdjust = async (id: number) => {
     const value = adjustValue.trim();
     if (!value) {
       toast.error("Vui lòng nhập số lượng thực tế");
       return;
     }
-
     const it = items.find((i) => i.id === id);
     confirmPurchase(id, value);
+    try {
+      await shoppingApi.toggle(id);
+    } catch { /* silent */ }
 
     if (it) {
       const cmp = compareQty(it.quantity, value);
@@ -53,40 +84,60 @@ export function useShoppingList() {
       else if (cmp?.diff === "over") toast.info(`"${it.name}" mua dư ${cmp.deltaText}`);
       else toast.success(`Đã đánh dấu "${it.name}"`);
     }
-
     setAdjustingId(null);
     setAdjustValue("");
   };
 
-  const handleCheckboxClick = (item: ShoppingItem) => {
+  const handleCheckboxClick = async (item: ShoppingItem) => {
     if (item.checked) {
       uncheckItem(item.id);
+      try { await shoppingApi.toggle(item.id); } catch { /* silent */ }
       return;
     }
     if (adjustingId === item.id) cancelAdjust();
     else startAdjust(item);
   };
 
-  const deleteItem = (id: number, name: string) => {
+  const deleteItem = async (id: number, name: string) => {
     removeItemFromStore(id);
     toast.success(`Đã xoá "${name}" khỏi danh sách`);
+    try {
+      await shoppingApi.delete(id);
+    } catch (err) {
+      toast.error("Xoá thất bại: " + (err as Error).message);
+    }
   };
 
-  const addItem = () => {
+  const addItem = async () => {
     if (!newItemName.trim()) return;
+    const qtyStr = newItemQty.trim() || "1";
+    const parsed = parseQty(qtyStr);
 
-    addItemToStore({
-      name: newItemName.trim(),
-      category: newItemCategory,
-      checked: false,
-      quantity: newItemQty.trim() || "1",
-      addedBy: "Bạn",
-    });
+    try {
+      const created = await shoppingApi.add({
+        item_name: newItemName.trim(),
+        quantity: parsed?.value ?? 1,
+        unit: parsed?.unit ?? "",
+        category: newItemCategory,
+        emoji: "🛒",
+      });
 
-    toast.success(`Đã thêm "${newItemName.trim()}" vào ${newItemCategory}`);
-    setNewItemName("");
-    setNewItemQty("");
-    setAddingItem(false);
+      addItemToStore({
+        id: created.id,
+        name: newItemName.trim(),
+        category: newItemCategory,
+        checked: false,
+        quantity: qtyStr,
+        addedBy: "Bạn",
+      });
+
+      toast.success(`Đã thêm "${newItemName.trim()}" vào ${newItemCategory}`);
+      setNewItemName("");
+      setNewItemQty("");
+      setAddingItem(false);
+    } catch (err) {
+      toast.error("Thêm thất bại: " + (err as Error).message);
+    }
   };
 
   const handleShare = async () => {
@@ -175,8 +226,9 @@ export function useShoppingList() {
     return { under, over, match };
   }, [items]);
 
-  const completeShopping = () => {
+  const completeShopping = async () => {
     setCompleted(true);
+    try { await shoppingApi.clearPurchased(); } catch { /* silent */ }
     toast.success(`${checkedCount} mặt hàng đã chuyển vào Kho thực phẩm`);
   };
 
@@ -195,6 +247,7 @@ export function useShoppingList() {
     totalCount,
     progress,
     diffStats,
+    isLoading,
 
     addingItem,
     setAddingItem,

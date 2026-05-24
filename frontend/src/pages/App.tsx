@@ -1,14 +1,17 @@
 import { useRef, useState } from 'react';
 import type { ElementType, FormEvent } from 'react';
-import { Home, Refrigerator, ChefHat, ShoppingCart, Search, Bell, Leaf, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Home, Refrigerator, ChefHat, ShoppingCart, Search, Bell, Leaf, ChevronLeft, ChevronRight, Calendar, LogOut } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { useClickOutside } from '@/hooks/useClickOutside';
+import { useAuthStore } from '@/stores/authStore';
 import type { TabType } from '@/lib/tabs';
 import { HomePage } from '@/pages/HomePage';
 import { InventoryPage } from '@/pages/InventoryPage';
 import { MealPlannerPage } from '@/pages/MealPlannerPage';
+import { LoginPage } from './LoginPage';
+import { SettingsModal } from '@/components/SettingsModal';
 import { RecipesPage } from '@/pages/RecipesPage';
-import { ShoppingPage } from '@/pages/ShoppingPage';
+import { ShoppingPage } from './ShoppingPage';
 
 const navItems: { id: TabType; label: string; icon: ElementType; badge?: number }[] = [
   { id: 'home',      label: 'Trang chủ',     icon: Home },
@@ -33,14 +36,18 @@ const notifications = [
 ];
 
 export default function App() {
+  const { user, logout } = useAuthStore();
   const [activeTab,  setActiveTab]  = useState<TabType>('home');
   const [collapsed,  setCollapsed]  = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(notifications.filter(n => n.unread).length);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  if (!user) return <LoginPage />;
 
   useClickOutside(notifRef, () => setNotifOpen(false), notifOpen);
   useClickOutside(profileRef, () => setProfileOpen(false), profileOpen);
@@ -207,7 +214,7 @@ export default function App() {
             </div>
           ) : (
             <button
-              onClick={() => toast.info('Mở trang Cài đặt gia đình')}
+              onClick={() => setSettingsOpen(true)}
               className="w-full flex items-center gap-3 hover:bg-slate-50 -m-1 p-1 rounded-lg transition-colors"
             >
               <div className="w-9 h-9 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shrink-0">
@@ -297,19 +304,20 @@ export default function App() {
                 onClick={() => setProfileOpen(o => !o)}
                 className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
               >
-                <span className="text-white" style={{ fontSize: '0.7rem', fontWeight: 700 }}>NH</span>
+                <span className="text-white" style={{ fontSize: '0.7rem', fontWeight: 700 }}>
+                  {user?.name?.slice(0, 2).toUpperCase() || 'EP'}
+                </span>
               </button>
               {profileOpen && (
                 <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100">
-                    <p className="text-slate-900" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Gia đình Nguyễn</p>
-                    <p className="text-slate-500" style={{ fontSize: '0.7rem' }}>nguyen.family@email.com</p>
+                    <p className="text-slate-900" style={{ fontSize: '0.85rem', fontWeight: 600 }}>{user?.name || 'Người dùng'}</p>
+                    <p className="text-slate-500" style={{ fontSize: '0.7rem' }}>{user?.email}</p>
                   </div>
                   <div className="py-1">
                     {[
-                      { label: 'Hồ sơ gia đình', action: () => toast.info('Mở hồ sơ gia đình') },
-                      { label: 'Cài đặt', action: () => toast.info('Mở cài đặt') },
-                      { label: 'Trợ giúp', action: () => toast.info('Mở trợ giúp') },
+                      { label: 'Hồ sơ', action: () => setSettingsOpen(true) },
+                      { label: 'Cài đặt', action: () => setSettingsOpen(true) },
                     ].map(it => (
                       <button
                         key={it.label}
@@ -322,11 +330,11 @@ export default function App() {
                     ))}
                     <div className="border-t border-slate-100 my-1" />
                     <button
-                      onClick={() => { toast.success('Đã đăng xuất'); setProfileOpen(false); }}
-                      className="w-full text-left px-4 py-2 text-rose-600 hover:bg-rose-50 transition-colors"
+                      onClick={() => { logout(); setProfileOpen(false); }}
+                      className="w-full text-left px-4 py-2 text-rose-600 hover:bg-rose-50 transition-colors flex items-center gap-2"
                       style={{ fontSize: '0.8rem' }}
                     >
-                      Đăng xuất
+                      <LogOut className="w-3.5 h-3.5" /> Đăng xuất
                     </button>
                   </div>
                 </div>
@@ -343,6 +351,8 @@ export default function App() {
           {activeTab === 'shopping'  && <ShoppingPage />}
         </main>
       </div>
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
