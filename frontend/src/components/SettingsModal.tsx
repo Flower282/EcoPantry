@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
-import { X, User, Shield, CheckCircle2, Loader2, Utensils } from 'lucide-react';
+import { X, User, Shield, CheckCircle2, Loader2, Utensils, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
-import { preferencesApi } from '@/lib/api';
+import { groupsApi, preferencesApi, type FamilyGroup } from '@/lib/api';
 
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-type TabType = 'profile' | 'preferences';
+type TabType = 'profile' | 'preferences' | 'group';
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { user, updateUser } = useAuthStore();
@@ -20,6 +20,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   // Form State
   const [name, setName] = useState(user?.name || '');
   const [dietary, setDietary] = useState('');
+  const [group, setGroup] = useState<FamilyGroup | null>(null);
+  const [groupName, setGroupName] = useState('Gia đình của tôi');
+  const [inviteCode, setInviteCode] = useState('');
 
   // Fetch preferences when opened
   useEffect(() => {
@@ -28,8 +31,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       const fetchPrefs = async () => {
         setIsLoading(true);
         try {
-          const data = await preferencesApi.get();
+          const [data, groupData] = await Promise.all([
+            preferencesApi.get(),
+            groupsApi.current(),
+          ]);
           setDietary(data.preferences || '');
+          setGroup(groupData.group);
+          setGroupName(groupData.group.group_name);
         } catch (err) {
           console.error('Failed to load preferences:', err);
         } finally {
@@ -52,9 +60,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await preferencesApi.setName(name);
         if (updateUser) updateUser(name);
         toast.success('Đã cập nhật hồ sơ');
-      } else {
+      } else if (activeTab === 'preferences') {
         await preferencesApi.set(dietary);
         toast.success('Đã lưu sở thích ăn uống');
+      } else {
+        const code = inviteCode.trim();
+        const data = code
+          ? await groupsApi.join(code)
+          : await groupsApi.create(groupName.trim() || 'Gia đình của tôi');
+        setGroup(data.group);
+        setGroupName(data.group.group_name);
+        setInviteCode('');
+        toast.success(code ? 'Đã tham gia nhóm gia đình' : 'Đã cập nhật nhóm gia đình');
       }
       onClose();
     } catch (err) {
@@ -77,7 +94,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white/50">
           <h2 className="text-xl font-bold text-slate-800">
-            {activeTab === 'profile' ? 'Hồ sơ cá nhân' : 'Cài đặt'}
+            {activeTab === 'profile' ? 'Hồ sơ cá nhân' : activeTab === 'group' ? 'Nhóm gia đình' : 'Cài đặt'}
           </h2>
           <button
             onClick={onClose}
@@ -108,6 +125,16 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             }`}
           >
             <Utensils className="w-4 h-4" /> Sở thích ăn uống
+          </button>
+          <button
+            onClick={() => setActiveTab('group')}
+            className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'group'
+                ? 'bg-white text-emerald-700 shadow-sm border border-slate-200/50'
+                : 'text-slate-500 hover:bg-slate-100/50'
+            }`}
+          >
+            <Users className="w-4 h-4" /> Nhóm
           </button>
         </div>
 
@@ -145,7 +172,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </p>
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'preferences' ? (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -161,6 +188,56 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <p className="text-xs text-slate-500 mt-2 leading-relaxed">
                   EcoPantry sẽ dựa vào thông tin này để gợi ý công thức và nhắc nhở mua sắm phù hợp với gia đình bạn.
                 </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Tên nhóm
+                </label>
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                  placeholder="Gia đình của tôi"
+                />
+              </div>
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <p className="text-sm font-semibold text-emerald-800">Mã mời chia sẻ danh sách</p>
+                <p className="mt-1 text-2xl font-bold tracking-widest text-emerald-700">
+                  {group?.invite_code || '--------'}
+                </p>
+                <p className="mt-1 text-xs text-emerald-700">
+                  Thành viên dùng mã này để tham gia cùng nhóm mua sắm.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Tham gia nhóm bằng mã mời
+                </label>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all uppercase"
+                  placeholder="VD: A1B2C3D4"
+                />
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-700">Thành viên</p>
+                {(group?.members || []).map((member) => (
+                  <div key={member.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{member.name}</p>
+                      <p className="text-xs text-slate-500">{member.email}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-700">
+                      {member.GroupMember?.role || 'Member'}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -1,6 +1,8 @@
 const express = require("express");
 const {
   getRecipes,
+  getCommunityRecipes,
+  getRecipe,
   addRecipe,
   saveRecipe,
   generateRecipes,
@@ -16,6 +18,12 @@ router.use(requireAuth);
 
 // GET recipes
 router.get("/", getRecipes);
+
+// GET community recipes
+router.get("/community", getCommunityRecipes);
+
+// GET recipe detail
+router.get("/:id", getRecipe);
 
 // POST recipe
 router.post("/add", addRecipe);

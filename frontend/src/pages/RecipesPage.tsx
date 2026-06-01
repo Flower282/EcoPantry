@@ -5,7 +5,7 @@ import {
   Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, X, Heart,
   Filter, Star, ArrowRight, Wand2, Loader2,
 } from 'lucide-react';
-import { recipesApi, type RecipeItem } from '@/lib/api';
+import { recipesApi, shoppingApi, type RecipeItem } from '@/lib/api';
 
 type Difficulty = 'Dễ' | 'Trung bình' | 'Khó';
 type Category = 'personal' | 'community';
@@ -165,6 +165,7 @@ function DifficultyBadge({ level }: { level: Difficulty }) {
     'Trung bình': 'bg-amber-50 text-amber-700 ring-amber-100',
     'Khó': 'bg-rose-50 text-rose-700 ring-rose-100',
   };
+
   return (
     <span className={`px-2 py-0.5 rounded-full ring-1 ${styles[level]}`} style={{ fontSize: '0.65rem', fontWeight: 600 }}>
       {level}
@@ -172,13 +173,36 @@ function DifficultyBadge({ level }: { level: Difficulty }) {
   );
 }
 
+function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
+  return {
+    id: r.id,
+    name: r.title,
+    category,
+    author: r.created_by_name || undefined,
+    servings: r.servings || '4 người',
+    time: r.time || '30 phút',
+    difficulty: (r.difficulty as Difficulty) || 'Dễ',
+    calories: r.calories || '— kcal',
+    readyPercent: 100,
+    rating: 0,
+    image: r.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
+    ingredients: (r.ingredients || []).map((ing) => ({
+      name: ing.name,
+      amount: `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}`,
+      available: true,
+    })),
+    steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
+    tags: r.tags || [],
+  };
+}
+
 export function RecipesPage() {
-  const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [category, setCategory] = useState<Category>('personal');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<number>(initialRecipes[0].id);
-  const [bookmarked, setBookmarked] = useState<Set<number>>(new Set([2]));
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [bookmarked, setBookmarked] = useState<Set<number>>(new Set());
   const [cookingId, setCookingId] = useState<number | null>(null);
   const [activeStep, setActiveStep] = useState(0);
 
@@ -191,37 +215,33 @@ export function RecipesPage() {
     const fetchRecipes = async () => {
       setIsLoading(true);
       try {
-        const apiRecipes: RecipeItem[] = await recipesApi.getAll();
-        const mapped: Recipe[] = apiRecipes.map((r) => ({
-          id: r.id,
-          name: r.title,
-          category: 'personal' as Category,
-          author: r.created_by_name || undefined,
-          servings: r.ingredients?.[0]?.unit || '4 người',
-          time: '30 phút',
-          difficulty: 'Dễ' as Difficulty,
-          calories: '— kcal',
-          readyPercent: 100,
-          rating: 0,
-          image: r.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
-          ingredients: (r.ingredients || []).map((ing: { name: string; quantity: string; unit?: string }) => ({
-            name: ing.name,
-            amount: `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}`,
-            available: true,
-          })),
-          steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
-          tags: r.tags || [],
-        }));
-        // Keep community recipes, replace personal with API data if any
-        if (mapped.length > 0) {
-          setRecipes((prev) => [
-            ...mapped,
-            ...prev.filter((r) => r.category === 'community'),
-          ]);
-          setSelectedId(mapped[0].id);
-          setBookmarked(new Set(mapped.map((r) => r.id)));
+        const [savedResult, communityResult] = await Promise.allSettled([
+          recipesApi.getAll(),
+          recipesApi.getCommunity(),
+        ]);
+        if (savedResult.status === 'rejected') {
+          throw savedResult.reason;
         }
-      } catch { /* use local data if API fails */ }
+
+        const apiRecipes = savedResult.value;
+        const communityRecipes = communityResult.status === 'fulfilled' ? communityResult.value : [];
+        if (communityResult.status === 'rejected') {
+          toast.error('Không thể tải công thức cộng đồng: ' + (communityResult.reason as Error).message);
+        }
+        const personalMapped: Recipe[] = apiRecipes.map((recipe) => mapApiRecipe(recipe, 'personal'));
+        const communityMapped: Recipe[] = communityRecipes.map((recipe) => mapApiRecipe(recipe, 'community'));
+        setRecipes([...personalMapped, ...communityMapped]);
+        setSelectedId(personalMapped[0]?.id ?? communityMapped[0]?.id ?? null);
+        if (personalMapped.length === 0 && communityMapped.length > 0) {
+          setCategory('community');
+        }
+        setBookmarked(new Set(personalMapped.map((r) => r.id)));
+      } catch (err) {
+        toast.error('Không thể tải công thức: ' + (err as Error).message);
+        setRecipes([]);
+        setSelectedId(null);
+        setBookmarked(new Set());
+      }
       finally { setIsLoading(false); }
     };
     fetchRecipes();
@@ -235,12 +255,12 @@ export function RecipesPage() {
       .filter((r) => !q || r.name.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)));
   }, [recipes, category, searchQuery]);
 
-  const selected = recipes.find((r) => r.id === selectedId) ?? visibleList[0] ?? recipes[0];
-  const missing = selected.ingredients.filter((i) => !i.available);
-  const available = selected.ingredients.filter((i) => i.available);
+  const selected = selectedId !== null ? recipes.find((r) => r.id === selectedId) ?? visibleList[0] : visibleList[0];
+  const missing = selected?.ingredients.filter((i) => !i.available) ?? [];
+  const available = selected?.ingredients.filter((i) => i.available) ?? [];
 
   /* ── Handlers ──────────────────────────────── */
-  const toggleBookmark = (id: number, name: string) => {
+  const toggleBookmarkLocal = (id: number, name: string) => {
     setBookmarked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) { next.delete(id); toast.success(`Đã bỏ lưu "${name}"`); }
@@ -249,18 +269,84 @@ export function RecipesPage() {
     });
   };
 
-  const handleAddToShopping = () => {
-    toast.success(`Đã thêm ${missing.length} nguyên liệu vào danh sách đi chợ`);
+  const reloadRecipes = async () => {
+    const [savedResult, communityResult] = await Promise.allSettled([
+      recipesApi.getAll(),
+      recipesApi.getCommunity(),
+    ]);
+    if (savedResult.status === 'rejected') {
+      throw savedResult.reason;
+    }
+
+    const apiRecipes = savedResult.value;
+    const communityRecipes = communityResult.status === 'fulfilled' ? communityResult.value : [];
+    if (communityResult.status === 'rejected') {
+      toast.error('Không thể tải công thức cộng đồng: ' + (communityResult.reason as Error).message);
+    }
+    const personalMapped = apiRecipes.map((recipe) => mapApiRecipe(recipe, 'personal'));
+    const communityMapped = communityRecipes.map((recipe) => mapApiRecipe(recipe, 'community'));
+    setRecipes([...personalMapped, ...communityMapped]);
+    setBookmarked(new Set(personalMapped.map((r) => r.id)));
+    setSelectedId((current) => current ?? personalMapped[0]?.id ?? communityMapped[0]?.id ?? null);
+    if (personalMapped.length === 0 && communityMapped.length > 0) {
+      setCategory('community');
+    }
+  };
+
+  const toggleBookmark = async (id: number, name: string) => {
+    try {
+      if (bookmarked.has(id)) {
+        await recipesApi.delete(id);
+        toast.success(`Đã bỏ lưu "${name}"`);
+      } else {
+        await recipesApi.save(id);
+        toast.success(`Đã lưu "${name}"`);
+      }
+      await reloadRecipes();
+    } catch (err) {
+      toast.error('Không thể cập nhật công thức: ' + (err as Error).message);
+    }
+  };
+
+  const handleSelectRecipe = async (id: number) => {
+    setSelectedId(id);
+    setCookingId(null);
+
+    try {
+      const detail = await recipesApi.getById(id);
+      const currentCategory = recipes.find((recipe) => recipe.id === id)?.category ?? 'community';
+      setRecipes((prev) => prev.map((recipe) =>
+        recipe.id === id ? mapApiRecipe(detail, currentCategory) : recipe,
+      ));
+    } catch (err) {
+      toast.error('Không thể tải chi tiết công thức: ' + (err as Error).message);
+    }
+  };
+
+  const handleAddToShopping = async () => {
+    if (!selected) return;
+    try {
+      await Promise.all(missing.map((ing) => shoppingApi.add({
+        item_name: ing.name,
+        quantity: 1,
+        unit: ing.amount,
+        category: selected.tags[0] || 'Thực phẩm khô',
+        emoji: '🛒',
+      })));
+      toast.success(`Đã thêm ${missing.length} nguyên liệu vào danh sách đi chợ`);
+    } catch (err) {
+      toast.error('Không thể thêm vào danh sách đi chợ: ' + (err as Error).message);
+    }
   };
 
   const startCooking = () => {
+    if (!selected) return;
     setCookingId(selected.id);
     setActiveStep(0);
     toast.info('Bắt đầu nấu — chúc ngon miệng!');
   };
 
   const handleCreateRecipe = async (data: NewRecipeData) => {
-    const id = Date.now();
     const ingredients: Ingredient[] = data.ingredients
       .split('\n')
       .map((line) => line.trim())
@@ -271,38 +357,34 @@ export function RecipesPage() {
       });
     const steps = data.steps.split('\n').map((s) => s.trim()).filter(Boolean);
 
-    const newRecipe: Recipe = {
-      id,
-      name: data.name,
-      category: 'personal',
-      servings: data.servings || '4 người',
-      time: data.time || '30 phút',
-      difficulty: data.difficulty,
-      calories: data.calories || '— kcal',
-      readyPercent: 100,
-      rating: 0,
-      image: data.image || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
-      ingredients: ingredients.length ? ingredients : [{ name: 'Chưa thêm nguyên liệu', amount: '', available: true }],
-      steps: steps.length ? steps : ['Chưa có hướng dẫn'],
-      tags: data.tags.split(',').map((t) => t.trim()).filter(Boolean),
-    };
-    setRecipes((r) => [newRecipe, ...r]);
-    setCategory('personal');
-    setSelectedId(id);
-    setAddOpen(false);
-    toast.success(`Đã tạo công thức "${data.name}"`);
-
-    // Sync to API
     try {
-      await recipesApi.add({
+      const savedRecipes = await recipesApi.add({
         title: data.name,
-        instructions: steps.join('\n'),
+        instructions: steps.length ? steps.join('\n') : 'Chưa có hướng dẫn',
         image_url: data.image || '',
-        ingredients: ingredients.map((ing) => ({ name: ing.name, quantity: ing.amount, unit: '' })),
-        user_uuid: 0,
+        ingredients: (ingredients.length ? ingredients : [{ name: 'Chưa thêm nguyên liệu', amount: '', available: true }])
+          .map((ing) => ({ name: ing.name, quantity: ing.amount, unit: '' })),
+        servings: data.servings,
+        time: data.time,
+        difficulty: data.difficulty,
+        calories: data.calories,
+        tags: data.tags.split(',').map((t) => t.trim()).filter(Boolean),
         created_by_name: '',
       });
-    } catch { /* silent — local state already updated */ }
+
+      const mapped = savedRecipes.map((recipe) => mapApiRecipe(recipe, 'personal'));
+      setRecipes((prev) => [
+        ...mapped,
+        ...prev.filter((r) => r.category === 'community'),
+      ]);
+      setCategory('personal');
+      setSelectedId(mapped[0]?.id ?? selectedId);
+      setBookmarked(new Set(mapped.map((r) => r.id)));
+      setAddOpen(false);
+      toast.success(`Đã tạo công thức "${data.name}"`);
+    } catch (err) {
+      toast.error('Không thể tạo công thức: ' + (err as Error).message);
+    }
   };
 
   const handleAISuggest = (requirements: string) => {
@@ -311,12 +393,36 @@ export function RecipesPage() {
     // Surface a representative suggestion based on requirements keyword (mock)
     const match = recipes.find((r) =>
       requirements.toLowerCase().split(/\s+/).some((kw) => kw && (r.name.toLowerCase().includes(kw) || r.tags.join(' ').toLowerCase().includes(kw))),
-    ) ?? recipes[0];
+    );
+    if (!match) return;
     setCategory(match.category);
     setSelectedId(match.id);
   };
 
   /* ── Render ────────────────────────────────── */
+  if (!selected) {
+    return (
+      <div className="h-full bg-slate-50 flex items-center justify-center p-8">
+        <div className="bg-white border border-slate-100 rounded-2xl p-8 text-center max-w-md shadow-sm">
+          <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-900" style={{ fontSize: '1rem', fontWeight: 700 }}>Chưa có công thức</p>
+          <p className="text-slate-500 mt-1" style={{ fontSize: '0.82rem' }}>
+            Thêm công thức mới hoặc lưu công thức cộng đồng để bắt đầu.
+          </p>
+          <button
+            onClick={() => setAddOpen(true)}
+            className="mt-5 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+            style={{ fontSize: '0.82rem', fontWeight: 600 }}
+          >
+            <Plus className="w-4 h-4" /> Thêm công thức
+          </button>
+        </div>
+        {addOpen && <AddRecipeForm onClose={() => setAddOpen(false)} onSubmit={handleCreateRecipe} />}
+      </div>
+    );
+  }
+
+
   return (
     <div className="flex h-full overflow-hidden bg-slate-50">
       {/* ── LEFT: Master list (30%) ────────────── */}
@@ -398,7 +504,7 @@ export function RecipesPage() {
               return (
                 <button
                   key={r.id}
-                  onClick={() => { setSelectedId(r.id); setCookingId(null); }}
+                  onClick={() => handleSelectRecipe(r.id)}
                   className={`w-full text-left border-b border-slate-50 transition-all ${
                     isSelected ? 'bg-emerald-50/60 border-l-4 border-l-emerald-500' : 'hover:bg-slate-50 border-l-4 border-l-transparent'
                   }`}

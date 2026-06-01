@@ -13,6 +13,8 @@ const preferencesRouter = require("./routes/preferences");
 const publicRouter = require("./routes/public");
 const shoppingListRouter = require("./routes/shoppingList");
 const mealPlansRouter = require("./routes/mealPlans");
+const groupsRouter = require("./routes/groups");
+const reportsRouter = require("./routes/reports");
 const db = require("./models");
 
 // Initialise Express
@@ -57,6 +59,8 @@ app.use("/api/preferences", preferencesRouter);
 app.use("/api/public", publicRouter);
 app.use("/api/shopping", shoppingListRouter);
 app.use("/api/meal-plans", mealPlansRouter);
+app.use("/api/groups", groupsRouter);
+app.use("/api/reports", reportsRouter);
 
 // Database Connection and Server Start
 // ============================================================================
@@ -66,7 +70,7 @@ const startServer = async () => {
   if (process.env.NODE_ENV !== "test") {
     try {
       await connectToDb();
-      await db.sequelize.sync();
+      await db.sequelize.sync({ alter: true });
       app.listen(PORT, () => {
         console.log("Listening on Port:", PORT);
       });

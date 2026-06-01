@@ -1,6 +1,7 @@
 const request = require("supertest");
 const app = require("../server");
-const { connectToDb, closeDb, getDb } = require("../utils/database");
+const { connectToDb, closeDb } = require("../utils/database");
+const { User } = require("../models");
 
 jest.setTimeout(30000);
 
@@ -15,8 +16,7 @@ afterAll(async () => {
 let token;
 
 beforeEach(async () => {
-  const db = getDb();
-  await db.collection("users").deleteMany({ email: "testuser@example.com" });
+  await User.destroy({ where: { email: "testuser@example.com" } });
 
   // Create a test user and get a token
   await request(app).post("/api/auth/signup").send({

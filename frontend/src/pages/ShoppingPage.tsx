@@ -2,13 +2,32 @@ import type { Diff } from "@/lib/quantity";
 import { compareQty, parseQty } from "@/lib/quantity";
 import { useShoppingList } from "@/hooks/useShoppingList";
 import type { ShoppingCategory } from "@/stores/shoppingListStore";
+import { useEffect, useState } from "react";
+import { groupsApi } from "@/lib/api";
 
-const familyMembers = [
+const seedFamilyMembers = [
   { initials: 'B',  name: 'Bạn', color: 'from-green-400 to-green-600',   online: true },
   { initials: 'M',  name: 'Mẹ',  color: 'from-pink-400 to-pink-600',     online: true },
   { initials: 'Ba', name: 'Ba',  color: 'from-blue-400 to-blue-600',     online: false },
   { initials: 'C',  name: 'Chị', color: 'from-purple-400 to-purple-600', online: true },
 ];
+
+interface FamilyMember {
+  initials: string;
+  name: string;
+  color: string;
+}
+
+const memberColors = seedFamilyMembers.map((member) => member.color);
+
+function initialsOf(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'EP';
+}
 
 /* Small visual badge for diff state */
 function DiffBadge({ diff, deltaText }: { diff: Diff; deltaText: string }) {
@@ -30,6 +49,7 @@ function DiffBadge({ diff, deltaText }: { diff: Diff; deltaText: string }) {
 }
 
 export function ShoppingPage() {
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const {
     items,
     categories,
@@ -43,6 +63,7 @@ export function ShoppingPage() {
     addingItem,
     setAddingItem,
     completed,
+    completedCount,
     adjustingId,
     adjustValue,
     setAdjustValue,
@@ -65,6 +86,24 @@ export function ShoppingPage() {
     startNewList,
   } = useShoppingList();
 
+  useEffect(() => {
+    const loadGroupMembers = async () => {
+      try {
+        const data = await groupsApi.current();
+        const members = data.group.members || [];
+        setFamilyMembers(members.map((member, index) => ({
+          initials: initialsOf(member.name || member.email),
+          name: member.name || member.email,
+          color: memberColors[index % memberColors.length],
+        })));
+      } catch {
+        setFamilyMembers([]);
+      }
+    };
+
+    loadGroupMembers();
+  }, []);
+
   if (completed) {
     return (
       <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-96 text-center space-y-6">
@@ -74,7 +113,7 @@ export function ShoppingPage() {
         <div>
           <h2 className="text-gray-900" style={{ fontSize: '1.3rem', fontWeight: 700 }}>Mua sắm hoàn tất!</h2>
           <p className="text-gray-500 mt-2" style={{ fontSize: '0.85rem' }}>
-            {checkedCount} mặt hàng đã được chuyển vào kho thực phẩm.
+            {completedCount} mặt hàng đã được chuyển vào kho thực phẩm.
           </p>
         </div>
         <button
@@ -113,9 +152,6 @@ export function ShoppingPage() {
                       title={member.name}
                     >
                       <span className="text-white" style={{ fontSize: '0.65rem', fontWeight: 700 }}>{member.initials}</span>
-                      {member.online && (
-                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
-                      )}
                     </div>
                   ))}
                 </div>
@@ -134,7 +170,7 @@ export function ShoppingPage() {
                 <div className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
               </div>
               <div className="flex justify-between mt-1.5">
-                <span className="text-gray-400" style={{ fontSize: '0.68rem' }}>{familyMembers.filter(m => m.online).length} thành viên đang online</span>
+                <span className="text-gray-400" style={{ fontSize: '0.68rem' }}>{familyMembers.length} thành viên trong nhóm</span>
                 <span className="text-gray-400" style={{ fontSize: '0.68rem' }}>{totalCount - checkedCount} còn lại</span>
               </div>
             </div>
@@ -435,7 +471,7 @@ export function ShoppingPage() {
 
         <div className="bg-green-50 rounded-xl border border-green-100 p-3 space-y-2">
           <p className="text-green-800" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-            {familyMembers.filter(m => m.online).length} thành viên đang online
+            {familyMembers.length} thành viên trong nhóm
           </p>
           {familyMembers.map(m => (
             <div key={m.initials} className="flex items-center gap-2">
@@ -443,7 +479,6 @@ export function ShoppingPage() {
                 <span className="text-white" style={{ fontSize: '0.55rem', fontWeight: 700 }}>{m.initials}</span>
               </div>
               <span className="text-gray-700" style={{ fontSize: '0.75rem' }}>{m.name}</span>
-              {m.online && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500" />}
             </div>
           ))}
         </div>

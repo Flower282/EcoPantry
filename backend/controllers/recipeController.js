@@ -19,6 +19,25 @@ const getRecipes = async (req, res) => {
   res.status(200).json(recipes);
 };
 
+const getCommunityRecipes = async (req, res) => {
+  const user_uuid = req.user.id;
+
+  try {
+    const recipes = await Recipe.findAll({
+      order: [["createdAt", "DESC"]],
+    });
+
+    const communityRecipes = recipes.filter((recipe) => {
+      const saved = Array.isArray(recipe.saved) ? recipe.saved : [];
+      return !saved.includes(user_uuid);
+    });
+
+    res.status(200).json(communityRecipes);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
 const getRecipe = async (req, res) => {
   const recipe_id = req.params.id;
   const recipe = await Recipe.findByPk(recipe_id);
@@ -35,7 +54,26 @@ const addRecipe = async (req, res) => {
   const user_uuid = req.user.id;
 
   try {
-    await Recipe.create(recipe);
+    if (!recipe || !recipe.title) {
+      return res.status(400).json({ error: "Recipe title is required" });
+    }
+
+    const user = await User.findByPk(user_uuid);
+    await Recipe.create({
+      ...recipe,
+      title: recipe.title.trim(),
+      instructions: recipe.instructions?.trim() || "Chưa có hướng dẫn",
+      image_url: recipe.image_url || "",
+      ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
+      servings: recipe.servings || "",
+      time: recipe.time || "",
+      difficulty: recipe.difficulty || "",
+      calories: recipe.calories || "",
+      tags: Array.isArray(recipe.tags) ? recipe.tags : [],
+      user_uuid,
+      created_by_name: recipe.created_by_name || user?.name || "",
+      saved: Array.from(new Set([...(recipe.saved || []), user_uuid])),
+    });
     const recipes = await Recipe.findAll({
       where: {
         saved: {
@@ -192,6 +230,7 @@ const deleteRecipe = async (req, res) => {
 
 module.exports = {
   getRecipes,
+  getCommunityRecipes,
   getRecipe,
   addRecipe,
   generateRecipes,

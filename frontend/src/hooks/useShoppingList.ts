@@ -24,6 +24,7 @@ export function useShoppingList() {
   const [newItemCategory, setNewItemCategory] = useState<ShoppingCategory>(shoppingCategories[0]);
   const [addingItem, setAddingItem] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [completedCount, setCompletedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
@@ -227,14 +228,22 @@ export function useShoppingList() {
   }, [items]);
 
   const completeShopping = async () => {
-    setCompleted(true);
-    try { await shoppingApi.clearPurchased(); } catch { /* silent */ }
-    toast.success(`${checkedCount} mặt hàng đã chuyển vào Kho thực phẩm`);
+    const purchasedCount = checkedCount;
+    try {
+      await shoppingApi.clearPurchased();
+      setItems(items.filter((item) => !item.checked));
+      setCompletedCount(purchasedCount);
+      setCompleted(true);
+      toast.success(`${purchasedCount} mặt hàng đã chuyển vào Kho thực phẩm`);
+    } catch (err) {
+      toast.error("Không thể hoàn tất danh sách: " + (err as Error).message);
+    }
   };
 
   const startNewList = () => {
     resetForNewList();
     setCompleted(false);
+    setCompletedCount(0);
     toast.info("Đã khởi tạo danh sách mới");
   };
 
@@ -252,6 +261,7 @@ export function useShoppingList() {
     addingItem,
     setAddingItem,
     completed,
+    completedCount,
     adjustingId,
     adjustValue,
     setAdjustValue,

@@ -6,6 +6,10 @@ module.exports = (sequelize, DataTypes) =>
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      user_uuid: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       recipe_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

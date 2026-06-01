@@ -11,6 +11,7 @@ async function getOrCreateUserGroup(user_id) {
   const group = await Group.create({
     group_name: "Gia đình của tôi",
     invite_code: uuidv4().slice(0, 8).toUpperCase(),
+    user_uuid: user_id,
   });
 
   await GroupMember.create({ user_id, group_id: group.id });
@@ -42,6 +43,7 @@ const addShoppingItem = async (req, res) => {
     const group_id = await getOrCreateUserGroup(req.user.id);
     const item = await ShoppingList.create({
       group_id,
+      user_uuid: req.user.id,
       item_name,
       quantity: quantity || 1,
       unit: unit || "",
@@ -93,8 +95,39 @@ const deleteShoppingItem = async (req, res) => {
 const clearPurchasedItems = async (req, res) => {
   try {
     const group_id = await getOrCreateUserGroup(req.user.id);
+    const purchasedItems = await ShoppingList.findAll({
+      where: { group_id, is_purchased: true },
+      order: [["updatedAt", "DESC"]],
+    });
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not Found" });
+
+    const existingIngredients = Array.isArray(user.ingredients) ? user.ingredients : [];
+    const newIngredients = purchasedItems.map((item) => ({
+      id: `shopping_${item.id}_${Date.now()}`,
+      name: item.item_name,
+      category: item.category || "Thực phẩm khô",
+      quantity: String(item.quantity || 1),
+      unit: item.unit || "",
+      emoji: item.emoji || "🛒",
+      storage: item.category === "Thịt cá" || item.category === "Rau củ" ? "cold" : "dry",
+      daysLeft: item.category === "Thịt cá" ? 3 : item.category === "Rau củ" ? 7 : 30,
+      expiryDate: new Date(
+        Date.now() + (item.category === "Thịt cá" ? 3 : item.category === "Rau củ" ? 7 : 30) * 86400000,
+      ).toLocaleDateString("vi-VN"),
+      addedDate: new Date().toLocaleDateString("vi-VN"),
+      status: "fresh",
+      notes: "Tự động thêm từ danh sách đi chợ",
+    }));
+
+    await user.update({ ingredients: [...newIngredients, ...existingIngredients] });
     await ShoppingList.destroy({ where: { group_id, is_purchased: true } });
-    res.status(200).json({ message: "Cleared purchased items" });
+    res.status(200).json({
+      message: "Cleared purchased items",
+      transferred: newIngredients.length,
+      ingredients: user.ingredients,
+    });
   } catch (error) {
     console.error("Error clearing purchased items:", error);
     res.status(500).json({ error: error.message });

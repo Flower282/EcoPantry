@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Calendar, Sparkles, Heart, Clock, Plus, X, ChefHat, Users,
   Flame, ChevronLeft, ChevronRight, TrendingUp, Trash2, Search,
   CheckCircle2,
 } from 'lucide-react';
+import { ingredientsApi, mealPlanApi, recipesApi, type MealPlanItem, type RecipeItem } from '@/lib/api';
 
 /* ─────────────────────────────────────────────────
    Types & Mock Data
@@ -222,6 +223,53 @@ function todayKey(): Day {
   return (['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as Day[])[d];
 }
 
+const dayIndex: Record<Day, number> = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
+const mealTypeBySlot: Record<string, MealPlanItem['meal_type']> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+};
+const slotByMealType: Record<string, Slot> = {
+  Breakfast: 'breakfast',
+  Lunch: 'lunch',
+  Dinner: 'dinner',
+  Snack: 'snack',
+};
+
+function dateForDay(day: Day) {
+  const now = new Date();
+  const current = now.getDay();
+  const diff = dayIndex[day] - current;
+  const date = new Date(now);
+  date.setDate(now.getDate() + diff);
+  date.setHours(12, 0, 0, 0);
+  return date.toISOString().slice(0, 10);
+}
+
+function dayFromDate(value: string): Day {
+  return (['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as Day[])[new Date(value).getDay()];
+}
+
+function recipeFromApi(r: RecipeItem): Recipe {
+  return {
+    id: r.id,
+    name: r.title,
+    image: r.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=600',
+    prepTime: 10,
+    cookTime: Number.parseInt(r.time || '', 10) || 20,
+    servings: Number.parseInt(r.servings || '', 10) || 4,
+    calories: Number.parseInt(r.calories || '', 10) || 0,
+    rating: 0,
+    scheduledCount: 0,
+    ingredients: (r.ingredients || []).map((ing) => ({
+      name: ing.name,
+      amount: `${ing.quantity}${ing.unit ? ` ${ing.unit}` : ''}`,
+    })),
+    steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
+    tags: r.tags || [],
+  };
+}
+
 /* ─────────────────────────────────────────────────
    Main Component
 ───────────────────────────────────────────────── */
@@ -230,7 +278,10 @@ interface SlotConfig { id: Slot; label: string; time: string; removable: boolean
 export function MealPlannerPage() {
   const [view, setView] = useState<'daily' | 'weekly'>('weekly');
   const [activeDay, setActiveDay] = useState<Day>(todayKey());
+  const [recipeList, setRecipeList] = useState<Recipe[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [plan, setPlan] = useState<Plan>(emptyPlan);
+  const [planIds, setPlanIds] = useState<Record<string, number>>({});
   const [favorites, setFavorites] = useState<Set<number>>(new Set([2, 6]));
 
   const [slots, setSlots] = useState<SlotConfig[]>(
@@ -283,21 +334,68 @@ export function MealPlannerPage() {
   // Drag-drop
   const [draggingRecipeId, setDraggingRecipeId] = useState<number | null>(null);
 
+  useEffect(() => {
+    const loadPlannerData = async () => {
+      try {
+        const [apiRecipes, apiIngredients, apiPlans] = await Promise.all([
+          recipesApi.getAll(),
+          ingredientsApi.getAll(),
+          mealPlanApi.getAll(),
+        ]);
+
+        const mappedRecipes = apiRecipes.map(recipeFromApi);
+        setRecipeList(mappedRecipes);
+        setFavorites(new Set(mappedRecipes.map((r) => r.id)));
+
+        setInventoryItems((apiIngredients.ingredients || []).map((item) => ({
+          name: item.name,
+          daysLeft: item.daysLeft,
+          quantity: `${item.quantity}${item.unit ? ` ${item.unit}` : ''}`,
+        })));
+
+        const nextPlan: Plan = DAYS.reduce((acc, d) => {
+          acc[d.id] = { breakfast: null, lunch: null, dinner: null };
+          return acc;
+        }, {} as Plan);
+        const nextIds: Record<string, number> = {};
+
+        apiPlans.forEach((item) => {
+          const day = dayFromDate(item.plan_date);
+          const slot = slotByMealType[item.meal_type] || 'snack';
+          if (!nextPlan[day][slot]) {
+            nextPlan[day][slot] = {
+              recipeId: item.recipe_id,
+              scheduledAt: new Date(item.plan_date).getTime(),
+            };
+            nextIds[`${day}:${slot}`] = item.id;
+          }
+        });
+
+        setPlan(nextPlan);
+        setPlanIds(nextIds);
+      } catch (err) {
+        toast.error('Không thể tải kế hoạch bữa ăn: ' + (err as Error).message);
+      }
+    };
+
+    loadPlannerData();
+  }, []);
+
   /* Match metadata for each recipe */
   const recipeMeta = useMemo(() => {
     const out: Record<number, ReturnType<typeof computeMatch>> = {};
-    for (const r of recipes) out[r.id] = computeMatch(r, inventory);
+    for (const r of recipeList) out[r.id] = computeMatch(r, inventoryItems);
     return out;
-  }, []);
+  }, [inventoryItems, recipeList]);
 
   /* Sidebar list — filtered */
   const sidebarRecipes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return recipes
+    return recipeList
       .filter((r) => !onlyFavorites || favorites.has(r.id))
       .filter((r) => !q || r.name.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)))
-      .sort((a, b) => recipeMeta[b.id].matchScore - recipeMeta[a.id].matchScore);
-  }, [searchQuery, onlyFavorites, favorites, recipeMeta]);
+      .sort((a, b) => (recipeMeta[b.id]?.matchScore || 0) - (recipeMeta[a.id]?.matchScore || 0));
+  }, [searchQuery, onlyFavorites, favorites, recipeList, recipeMeta]);
 
   /* Stats */
   const stats = useMemo(() => {
@@ -309,8 +407,9 @@ export function MealPlannerPage() {
       for (const s of visibleSlots) {
         const meal = plan[d.id][s.id];
         if (meal) {
-          planned++;
           const meta = recipeMeta[meal.recipeId];
+          if (!meta) continue;
+          planned++;
           expiringHit += meta.expiringUsed;
           totalScore += meta.matchScore;
           scoreCount++;
@@ -326,37 +425,69 @@ export function MealPlannerPage() {
   }, [plan, recipeMeta, visibleSlots]);
 
   /* Handlers */
-  const assignMeal = (day: Day, slot: Slot, recipeId: number) => {
+  const assignMeal = async (day: Day, slot: Slot, recipeId: number) => {
     setPlan((p) => ({ ...p, [day]: { ...p[day], [slot]: { recipeId, scheduledAt: Date.now() } } }));
-    const recipe = recipes.find((r) => r.id === recipeId);
+    const recipe = recipeList.find((r) => r.id === recipeId);
+    const key = `${day}:${slot}`;
+    try {
+      if (planIds[key]) await mealPlanApi.delete(planIds[key]);
+      const created = await mealPlanApi.add({
+        recipe_id: recipeId,
+        plan_date: dateForDay(day),
+        meal_type: mealTypeBySlot[slot] || 'Snack',
+      });
+      setPlanIds((prev) => ({ ...prev, [key]: created.id }));
+    } catch (err) {
+      toast.error('Không thể lưu bữa ăn: ' + (err as Error).message);
+      return;
+    }
     toast.success(`Đã thêm "${recipe?.name}" vào ${slots.find((s) => s.id === slot)?.label} ${DAYS.find((d) => d.id === day)?.full}`);
   };
 
-  const removeMeal = (day: Day, slot: Slot) => {
+  const removeMeal = async (day: Day, slot: Slot) => {
     setPlan((p) => ({ ...p, [day]: { ...p[day], [slot]: null } }));
+    const key = `${day}:${slot}`;
+    try {
+      if (planIds[key]) await mealPlanApi.delete(planIds[key]);
+      setPlanIds((prev) => {
+        const { [key]: _, ...rest } = prev;
+        return rest;
+      });
+    } catch (err) {
+      toast.error('Không thể xoá bữa ăn: ' + (err as Error).message);
+      return;
+    }
     toast.success('Đã gỡ bữa khỏi kế hoạch');
   };
 
-  const clearWeek = () => {
+  const clearWeek = async () => {
     setPlan(emptyPlan);
+    try {
+      await Promise.all(Object.values(planIds).map((id) => mealPlanApi.delete(id)));
+      setPlanIds({});
+    } catch (err) {
+      toast.error('Không thể xoá kế hoạch tuần: ' + (err as Error).message);
+      return;
+    }
     toast.success('Đã xoá kế hoạch tuần');
   };
 
-  const generateAIPlan = () => {
+  const generateAIPlan = async () => {
     // Greedy fill: for each day/slot, pick the highest-expiring + match recipe not already used today
     const newPlan: Plan = { ...emptyPlan };
     DAYS.forEach((d) => { newPlan[d.id] = { breakfast: null, lunch: null, dinner: null }; });
 
-    const ranked = [...recipes].sort((a, b) => {
+    const ranked = [...recipeList].sort((a, b) => {
       const ma = recipeMeta[a.id];
       const mb = recipeMeta[b.id];
-      return (mb.expiringUsed * 100 + mb.matchScore) - (ma.expiringUsed * 100 + ma.matchScore);
+      return (((mb?.expiringUsed || 0) * 100) + (mb?.matchScore || 0))
+        - (((ma?.expiringUsed || 0) * 100) + (ma?.matchScore || 0));
     });
 
     for (const day of DAYS) {
       const usedToday = new Set<number>();
       for (const slot of visibleSlots) {
-        const pick = ranked.find((r) => !usedToday.has(r.id) && recipeMeta[r.id].matchScore >= 50);
+        const pick = ranked.find((r) => !usedToday.has(r.id) && (recipeMeta[r.id]?.matchScore || 0) >= 50);
         if (pick) {
           newPlan[day.id][slot.id] = { recipeId: pick.id, scheduledAt: Date.now() };
           usedToday.add(pick.id);
@@ -364,13 +495,29 @@ export function MealPlannerPage() {
       }
     }
     setPlan(newPlan);
+    try {
+      await Promise.all(Object.values(planIds).map((id) => mealPlanApi.delete(id)));
+      const created = await Promise.all(DAYS.flatMap((day) =>
+        visibleSlots
+          .filter((slot) => newPlan[day.id][slot.id])
+          .map((slot) => mealPlanApi.add({
+            recipe_id: newPlan[day.id][slot.id]!.recipeId,
+            plan_date: dateForDay(day.id),
+            meal_type: mealTypeBySlot[slot.id] || 'Snack',
+          }).then((saved) => [`${day.id}:${slot.id}`, saved.id] as const)),
+      ));
+      setPlanIds(Object.fromEntries(created));
+    } catch (err) {
+      toast.error('Không thể lưu kế hoạch tự động: ' + (err as Error).message);
+      return;
+    }
     toast.success('AI đã lên kế hoạch tuần tận dụng tối đa nguyên liệu sắp hết hạn!');
   };
 
   const toggleFavorite = (id: number) => {
     setFavorites((prev) => {
       const next = new Set(prev);
-      const recipe = recipes.find((r) => r.id === id);
+      const recipe = recipeList.find((r) => r.id === id);
       if (next.has(id)) { next.delete(id); toast.success(`Đã bỏ yêu thích "${recipe?.name}"`); }
       else { next.add(id); toast.success(`Đã thêm "${recipe?.name}" vào yêu thích`); }
       return next;
@@ -507,6 +654,7 @@ export function MealPlannerPage() {
             {view === 'weekly' ? (
               <WeeklyGrid
                 plan={plan}
+                recipes={recipeList}
                 slots={visibleSlots}
                 onUpdateSlotTime={updateSlotTime}
                 onRemoveSnack={removeSnack}
@@ -522,6 +670,7 @@ export function MealPlannerPage() {
                 day={activeDay}
                 onChangeDay={setActiveDay}
                 plan={plan}
+                recipes={recipeList}
                 slots={visibleSlots}
                 onUpdateSlotTime={updateSlotTime}
                 onRemoveSnack={removeSnack}
@@ -597,7 +746,7 @@ export function MealPlannerPage() {
         <RecipePickerModal
           day={picker.day}
           slot={picker.slot}
-          recipes={recipes}
+          recipes={recipeList}
           recipeMeta={recipeMeta}
           favorites={favorites}
           onClose={() => setPicker(null)}
@@ -607,9 +756,9 @@ export function MealPlannerPage() {
 
       {detailRecipeId != null && (
         <RecipeDetailModal
-          recipe={recipes.find((r) => r.id === detailRecipeId)!}
+          recipe={recipeList.find((r) => r.id === detailRecipeId)!}
           meta={recipeMeta[detailRecipeId]}
-          inventory={inventory}
+          inventory={inventoryItems}
           isFavorite={favorites.has(detailRecipeId)}
           onToggleFavorite={() => toggleFavorite(detailRecipeId)}
           onClose={() => setDetailRecipeId(null)}
@@ -630,9 +779,10 @@ export function MealPlannerPage() {
    Weekly Grid
 ───────────────────────────────────────────────── */
 function WeeklyGrid({
-  plan, slots, onUpdateSlotTime, onRemoveSnack, onPickSlot, onRemove, onOpenDetail, onDrop, draggingRecipeId, recipeMeta,
+  plan, recipes, slots, onUpdateSlotTime, onRemoveSnack, onPickSlot, onRemove, onOpenDetail, onDrop, draggingRecipeId, recipeMeta,
 }: {
   plan: Plan;
+  recipes: Recipe[];
   slots: SlotConfig[];
   onUpdateSlotTime: (id: Slot, time: string) => void;
   onRemoveSnack: (id: Slot) => void;
@@ -685,6 +835,7 @@ function WeeklyGrid({
                   day={d.id}
                   slot={slot.id}
                   meal={plan[d.id][slot.id]}
+                  recipes={recipes}
                   recipeMeta={recipeMeta}
                   isToday={d.id === today}
                   isDragging={draggingRecipeId != null}
@@ -706,11 +857,12 @@ function WeeklyGrid({
    Daily View
 ───────────────────────────────────────────────── */
 function DailyView({
-  day, onChangeDay, plan, slots, onUpdateSlotTime, onRemoveSnack, onPickSlot, onRemove, onOpenDetail, onDrop, draggingRecipeId, recipeMeta,
+  day, onChangeDay, plan, recipes, slots, onUpdateSlotTime, onRemoveSnack, onPickSlot, onRemove, onOpenDetail, onDrop, draggingRecipeId, recipeMeta,
 }: {
   day: Day;
   onChangeDay: (d: Day) => void;
   plan: Plan;
+  recipes: Recipe[];
   slots: SlotConfig[];
   onUpdateSlotTime: (id: Slot, time: string) => void;
   onRemoveSnack: (id: Slot) => void;
@@ -750,6 +902,7 @@ function DailyView({
             slot={slot}
             day={day}
             meal={plan[day][slot.id]}
+            recipes={recipes}
             recipeMeta={recipeMeta}
             isDragging={draggingRecipeId != null}
             onUpdateSlotTime={onUpdateSlotTime}
@@ -769,11 +922,12 @@ function DailyView({
    Slot Cell
 ───────────────────────────────────────────────── */
 function SlotCell({
-  day, slot, meal, recipeMeta, isToday, isDragging, onPick, onRemove, onOpenDetail, onDrop, tall,
+  day, slot, meal, recipes, recipeMeta, isToday, isDragging, onPick, onRemove, onOpenDetail, onDrop, tall,
 }: {
   day: Day;
   slot: Slot;
   meal: PlannedMeal | null;
+  recipes: Recipe[];
   recipeMeta: Record<number, ReturnType<typeof computeMatch>>;
   isToday?: boolean;
   isDragging?: boolean;
@@ -953,7 +1107,7 @@ function RecipePickerModal({
     const query = q.trim().toLowerCase();
     return [...recipes]
       .filter((r) => !query || r.name.toLowerCase().includes(query))
-      .sort((a, b) => recipeMeta[b.id].matchScore - recipeMeta[a.id].matchScore);
+      .sort((a, b) => (recipeMeta[b.id]?.matchScore || 0) - (recipeMeta[a.id]?.matchScore || 0));
   }, [q, recipes, recipeMeta]);
 
   return (
@@ -1191,12 +1345,13 @@ function RecipeDetailModal({
    SlotCard — reusable card for a single meal slot (daily view)
 ───────────────────────────────────────────────── */
 function SlotCard({
-  slot, day, meal, recipeMeta, isDragging,
+  slot, day, meal, recipes, recipeMeta, isDragging,
   onUpdateSlotTime, onRemoveSnack, onPick, onRemove, onOpenDetail, onDrop,
 }: {
   slot: SlotConfig;
   day: Day;
   meal: PlannedMeal | null;
+  recipes: Recipe[];
   recipeMeta: Record<number, ReturnType<typeof computeMatch>>;
   isDragging: boolean;
   onUpdateSlotTime: (id: Slot, time: string) => void;
@@ -1230,6 +1385,7 @@ function SlotCard({
           day={day}
           slot={slot.id}
           meal={meal}
+          recipes={recipes}
           recipeMeta={recipeMeta}
           isDragging={isDragging}
           onPick={onPick}

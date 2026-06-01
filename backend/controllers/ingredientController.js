@@ -82,7 +82,10 @@ const generateIngredients = async (req, res) => {
     // const user_updated = await User.findByPk(user_uuid);
 
     fs.unlink(req.files[0].path, (err) => {
-      if (err) throw err;
+      if (err) {
+        console.error("Unable to delete temp file:", err);
+        return;
+      }
       console.log("temp file was deleted");
     });
 
