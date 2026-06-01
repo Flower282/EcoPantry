@@ -34,6 +34,31 @@ module.exports = (sequelize, DataTypes) =>
         allowNull: false,
         defaultValue: "",
       },
+      servings: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "",
+      },
+      time: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "",
+      },
+      difficulty: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "",
+      },
+      calories: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "",
+      },
+      tags: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+      },
     },
     {
       tableName: "recipes",

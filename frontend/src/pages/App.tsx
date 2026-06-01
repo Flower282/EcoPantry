@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ElementType, FormEvent } from 'react';
 import { Home, Refrigerator, ChefHat, ShoppingCart, Search, Bell, Leaf, ChevronLeft, ChevronRight, Calendar, LogOut } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
@@ -12,6 +12,7 @@ import { LoginPage } from './LoginPage';
 import { SettingsModal } from '@/components/SettingsModal';
 import { RecipesPage } from '@/pages/RecipesPage';
 import { ShoppingPage } from './ShoppingPage';
+import { ingredientsApi } from '@/lib/api';
 
 const navItems: { id: TabType; label: string; icon: ElementType; badge?: number }[] = [
   { id: 'home',      label: 'Trang chủ',     icon: Home },
@@ -35,6 +36,14 @@ const notifications = [
   { id: 3, title: 'Cá hồi phi lê đã hết hạn', desc: 'Vui lòng kiểm tra và xoá khỏi kho', time: 'Hôm qua', unread: false },
 ];
 
+type NotificationItem = {
+  id: number;
+  title: string;
+  desc: string;
+  time: string;
+  unread: boolean;
+};
+
 export default function App() {
   const { user, logout } = useAuthStore();
   const [activeTab,  setActiveTab]  = useState<TabType>('home');
@@ -43,7 +52,8 @@ export default function App() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(notifications.filter(n => n.unread).length);
+  const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +63,38 @@ export default function App() {
   useClickOutside(profileRef, () => setProfileOpen(false), profileOpen);
 
   const currentPage = pageTitles[activeTab];
+
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const data = await ingredientsApi.getAll();
+        const dynamic = (data.ingredients || [])
+          .filter((item) => item.daysLeft <= 3)
+          .slice(0, 6)
+          .map((item, index) => ({
+            id: index + 1,
+            title: item.daysLeft < 0
+              ? `${item.name} đã hết hạn`
+              : item.daysLeft === 0
+                ? `${item.name} hết hạn hôm nay`
+                : `${item.name} sắp hết hạn`,
+            desc: item.daysLeft < 0
+              ? `Quá hạn ${Math.abs(item.daysLeft)} ngày, nên kiểm tra và xử lý`
+              : `Còn ${item.daysLeft} ngày, ưu tiên dùng trong bữa gần nhất`,
+            time: 'Từ kho thực phẩm',
+            unread: true,
+          }));
+
+        setNotificationItems(dynamic);
+        setUnreadCount(dynamic.filter((n) => n.unread).length);
+      } catch {
+        setNotificationItems([]);
+        setUnreadCount(0);
+      }
+    };
+
+    loadNotifications();
+  }, []);
 
   const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -279,7 +321,12 @@ export default function App() {
                     </button>
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {notifications.map(n => (
+                    {notificationItems.length === 0 && (
+                      <div className="px-4 py-6 text-center text-slate-400" style={{ fontSize: '0.78rem' }}>
+                        Chưa có thông báo
+                      </div>
+                    )}
+                    {notificationItems.map(n => (
                       <button
                         key={n.id}
                         onClick={() => { toast.info(n.title); setNotifOpen(false); }}

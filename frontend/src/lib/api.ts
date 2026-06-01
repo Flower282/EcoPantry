@@ -80,13 +80,14 @@ export interface RecipeItem {
   image_url: string;
   ingredients: { name: string; quantity: string; unit: string }[];
   saved: number[];
-  user_uuid: number;
+  user_uuid?: number | null;
   created_by_name: string;
   createdAt: string;
   // extra frontend fields
   time?: string;
   servings?: string;
-  category?: string;
+  difficulty?: string;
+  calories?: string;
   tags?: string[];
 }
 
@@ -94,7 +95,13 @@ export const recipesApi = {
   getAll: () =>
     request<RecipeItem[]>('/recipes'),
 
-  add: (recipe: Omit<RecipeItem, 'id' | 'saved' | 'createdAt'>) =>
+  getCommunity: () =>
+    request<RecipeItem[]>('/recipes/community'),
+
+  getById: (id: number) =>
+    request<RecipeItem>(`/recipes/${id}`),
+
+  add: (recipe: Omit<RecipeItem, 'id' | 'saved' | 'createdAt' | 'user_uuid'>) =>
     request<RecipeItem[]>('/recipes/add', {
       method: 'POST',
       body: JSON.stringify({ recipe }),
@@ -187,4 +194,63 @@ export const preferencesApi = {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
+};
+
+// ─── Family Groups ─────────────────────────────────────────
+export interface FamilyGroup {
+  id: number;
+  group_name: string;
+  invite_code: string;
+  members?: {
+    id: number;
+    name: string;
+    email: string;
+    GroupMember?: { role: 'Admin' | 'Member' };
+  }[];
+}
+
+export const groupsApi = {
+  current: () =>
+    request<{ group: FamilyGroup }>('/groups/current'),
+
+  create: (group_name: string) =>
+    request<{ group: FamilyGroup }>('/groups', {
+      method: 'POST',
+      body: JSON.stringify({ group_name }),
+    }),
+
+  join: (invite_code: string) =>
+    request<{ group: FamilyGroup }>('/groups/join', {
+      method: 'POST',
+      body: JSON.stringify({ invite_code }),
+    }),
+};
+
+// ─── Reports ───────────────────────────────────────────────
+export interface ReportSummary {
+  inventory: {
+    total: number;
+    expiringSoon: number;
+    expired: number;
+    categoryCounts: Record<string, number>;
+    storageCounts: Record<string, number>;
+  };
+  shopping: {
+    total: number;
+    purchased: number;
+    pending: number;
+    categoryCounts: Record<string, number>;
+  };
+  meals: {
+    planned: number;
+    savedRecipes: number;
+  };
+  waste: {
+    expiredItems: number;
+  };
+}
+
+export const reportsApi = {
+  summary: () =>
+    request<ReportSummary>('/reports/summary'),
 };

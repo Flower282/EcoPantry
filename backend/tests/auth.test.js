@@ -1,13 +1,13 @@
 const request = require("supertest");
 const app = require("../server");
-const { connectToDb, closeDb, getDb } = require("../utils/database");
+const { connectToDb, closeDb } = require("../utils/database");
+const { User } = require("../models");
 
 jest.setTimeout(30000);
 
 beforeAll(async () => {
   await connectToDb();
-  const db = getDb();
-  await db.collection("users").deleteMany({ email: "testuser@example.com" });
+  await User.destroy({ where: { email: "testuser@example.com" } });
 });
 
 afterAll(async () => {
@@ -15,8 +15,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
-  const db = getDb();
-  await db.collection("users").deleteMany({ email: "testuser@example.com" });
+  await User.destroy({ where: { email: "testuser@example.com" } });
 });
 
 describe("Auth Routes", () => {

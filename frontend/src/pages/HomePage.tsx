@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { TabType } from '@/lib/tabs';
-import { ingredientsApi, recipesApi, type IngredientItem, type RecipeItem } from '@/lib/api';
+import { ingredientsApi, mealPlanApi, recipesApi, type IngredientItem, type MealPlanItem, type RecipeItem } from '@/lib/api';
 
 interface HomePageProps {
   onNavigate: (tab: TabType) => void;
@@ -18,7 +18,7 @@ const initialExpiring = [
   { id: 2, name: 'Sữa tươi Vinamilk', daysLeft: 2, quantity: '1 hộp', emoji: '🥛', storage: 'Ngăn mát' },
   { id: 3, name: 'Thịt gà tươi',      daysLeft: 3, quantity: '700g',  emoji: '🍗', storage: 'Ngăn mát' },
 ];
-const mealSuggestions = [
+const initialMealSuggestions = [
   {
     id: 1, name: 'Canh chua cá cà chua', tagline: 'Bữa tối nhẹ nhàng',
     readyPercent: 100, time: '30 phút', servings: '4 người',
@@ -77,23 +77,58 @@ const scheduled_meals: ScheduledMeal[] = [
 ];
 
 /* ── Component ──────────────────────────────────────────────── */
+function mealSlotMeta(mealType: MealPlanItem['meal_type']) {
+  switch (mealType) {
+    case 'Breakfast':
+      return { slot: 'breakfast' as const, slotLabel: 'Bữa sáng', time: '7:00', icon: Sun, accent: 'bg-amber-50 text-amber-700 ring-amber-100' };
+    case 'Lunch':
+      return { slot: 'lunch' as const, slotLabel: 'Bữa trưa', time: '12:00', icon: Sandwich, accent: 'bg-sky-50 text-sky-700 ring-sky-100' };
+    default:
+      return { slot: 'dinner' as const, slotLabel: 'Bữa tối', time: '18:30', icon: Moon, accent: 'bg-violet-50 text-violet-700 ring-violet-100' };
+  }
+}
+
+function mapTodayPlans(plans: MealPlanItem[]): ScheduledMeal[] {
+  const today = new Date().toISOString().slice(0, 10);
+  return plans
+    .filter((plan) => plan.plan_date.slice(0, 10) === today && plan.Recipe)
+    .map((plan) => {
+      const meta = mealSlotMeta(plan.meal_type);
+      const recipe = plan.Recipe as RecipeItem;
+      return {
+        id: plan.id,
+        ...meta,
+        recipe: recipe.title,
+        servings: recipe.servings || '4 người',
+        image: recipe.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
+        status: 'planned' as const,
+      };
+    });
+}
+
 export function HomePage({ onNavigate }: HomePageProps) {
-  const [expiring, setExpiring] = useState(initialExpiring);
-  const [meals, setMeals] = useState(scheduled_meals);
-  const [totalItems, setTotalItems] = useState(42);
-  const [cookableCount, setCookableCount] = useState(8);
+  const [expiring, setExpiring] = useState<typeof initialExpiring>([]);
+  const [mealSuggestions, setMealSuggestions] = useState<typeof initialMealSuggestions>([]);
+  const [meals, setMeals] = useState<ScheduledMeal[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [cookableCount, setCookableCount] = useState(0);
+  const [plannedMeals, setPlannedMeals] = useState(0);
+  const [expiredCount, setExpiredCount] = useState(0);
 
   // Fetch real data from API
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [ingredientData, apiRecipes] = await Promise.all([
+        const [ingredientData, savedRecipesResult, communityRecipesResult, apiPlans] = await Promise.all([
           ingredientsApi.getAll(),
           recipesApi.getAll(),
+          recipesApi.getCommunity().catch(() => []),
+          mealPlanApi.getAll(),
         ]);
 
         const allItems: IngredientItem[] = ingredientData.ingredients || [];
-        setTotalItems(allItems.length);
+        const apiRecipes = [...savedRecipesResult, ...communityRecipesResult];
+        const todayMeals = mapTodayPlans(apiPlans);
 
         // Expiring items (daysLeft <= 3)
         const soonExpiring = allItems
@@ -107,11 +142,48 @@ export function HomePage({ onNavigate }: HomePageProps) {
             emoji: i.emoji || '🥬',
             storage: i.storage === 'cold' ? 'Ngăn mát' : i.storage === 'freezer' ? 'Ngăn đông' : 'Tủ đồ khô',
           }));
-        if (soonExpiring.length > 0) setExpiring(soonExpiring);
+        setExpiring(soonExpiring);
 
-        // Cookable = all saved recipes
-        setCookableCount(apiRecipes.length);
-      } catch { /* use fallback data */ }
+        const inventoryNames = new Set(allItems.map((item) => item.name.trim().toLowerCase()));
+        const mappedSuggestions = apiRecipes
+          .map((recipe) => {
+            const ingredients = recipe.ingredients || [];
+            const have = ingredients.filter((ing) => inventoryNames.has(ing.name.trim().toLowerCase())).length;
+            const readyPercent = ingredients.length ? Math.round((have / ingredients.length) * 100) : 0;
+            return {
+              id: recipe.id,
+              name: recipe.title,
+              tagline: recipe.tags?.[0] || 'Công thức đã lưu',
+              readyPercent,
+              time: recipe.time || '30 phút',
+              servings: recipe.servings || '4 người',
+              cookable: ingredients.length > 0 && have === ingredients.length,
+              missing: Math.max(ingredients.length - have, 0),
+              image: recipe.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
+              usesExpiring: ingredients
+                .map((ing) => allItems.find((item) => item.name.trim().toLowerCase() === ing.name.trim().toLowerCase()))
+                .filter((item): item is IngredientItem => Boolean(item && item.daysLeft <= 3))
+                .map((item) => item.name),
+            };
+          })
+          .sort((a, b) => b.readyPercent - a.readyPercent)
+          .slice(0, 3);
+
+        setTotalItems(allItems.length);
+        setExpiredCount(allItems.filter((item) => Number(item.daysLeft) < 0).length);
+        setPlannedMeals(apiPlans.length);
+        setMealSuggestions(mappedSuggestions);
+        setCookableCount(mappedSuggestions.filter((recipe) => recipe.cookable).length);
+        setMeals(todayMeals);
+      } catch {
+        setExpiring([]);
+        setMealSuggestions([]);
+        setMeals([]);
+        setTotalItems(0);
+        setCookableCount(0);
+        setPlannedMeals(0);
+        setExpiredCount(0);
+      }
     };
     fetchData();
   }, []);
@@ -134,6 +206,14 @@ export function HomePage({ onNavigate }: HomePageProps) {
     {
       label: 'Nấu ngay được', value: cookableCount.toString(), unit: 'công thức',
       icon: ChefHat, accent: 'text-teal-700 bg-teal-50 ring-teal-100',
+    },
+    {
+      label: 'Đã lên kế hoạch', value: plannedMeals.toString(), unit: 'bữa ăn',
+      icon: Clock, accent: 'text-sky-700 bg-sky-50 ring-sky-100',
+    },
+    {
+      label: 'Lãng phí', value: expiredCount.toString(), unit: 'đã hết hạn',
+      icon: Flame, accent: 'text-rose-700 bg-rose-50 ring-rose-100',
     },
   ];
 
@@ -166,7 +246,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </section>
 
         {/* ── 2. Metric Cards: 3 cols, horizontal layout, slim ── */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-5">
           {metrics.map((m) => {
             const Icon = m.icon;
             return (
@@ -214,7 +294,13 @@ export function HomePage({ onNavigate }: HomePageProps) {
             </div>
 
             {/* Hero recipe card */}
-            <FeaturedRecipeCard meal={mealSuggestions[0]} onCook={() => { onNavigate('recipes'); toast.info('Mở công thức nấu ngay'); }} />
+            {mealSuggestions[0] ? (
+              <FeaturedRecipeCard meal={mealSuggestions[0]} onCook={() => { onNavigate('recipes'); toast.info('Mở công thức nấu ngay'); }} />
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400" style={{ fontSize: '0.82rem' }}>
+                Chưa có công thức phù hợp từ API
+              </div>
+            )}
 
             {/* Secondary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -348,7 +434,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
    Sub-components
 ─────────────────────────────────────────────────── */
 
-function FeaturedRecipeCard({ meal, onCook }: { meal: typeof mealSuggestions[0]; onCook: () => void }) {
+function FeaturedRecipeCard({ meal, onCook }: { meal: typeof initialMealSuggestions[0]; onCook: () => void }) {
   return (
     <article className="group relative bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-[0_2px_8px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition-shadow duration-300">
       <div className="grid grid-cols-1 md:grid-cols-5">
@@ -417,7 +503,7 @@ function FeaturedRecipeCard({ meal, onCook }: { meal: typeof mealSuggestions[0];
   );
 }
 
-function RecipeCard({ meal, onCook, onAddMissing }: { meal: typeof mealSuggestions[0]; onCook: () => void; onAddMissing: () => void }) {
+function RecipeCard({ meal, onCook, onAddMissing }: { meal: typeof initialMealSuggestions[0]; onCook: () => void; onAddMissing: () => void }) {
   return (
     <article className="group bg-white rounded-2xl border border-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:shadow-[0_6px_20px_rgba(15,23,42,0.06)] transition-all duration-200 overflow-hidden flex flex-col">
       <div className="relative h-36 overflow-hidden bg-slate-100">

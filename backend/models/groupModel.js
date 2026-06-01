@@ -14,6 +14,10 @@ module.exports = (sequelize, DataTypes) =>
         allowNull: false,
         unique: true,
       },
+      user_uuid: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
     },
     {
       tableName: "groups",

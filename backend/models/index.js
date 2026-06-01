@@ -36,16 +36,21 @@ db.Group.hasMany(db.GroupMember, { foreignKey: "group_id" });
 
 db.FridgeItem.belongsTo(db.Group, { foreignKey: "group_id" });
 db.Group.hasMany(db.FridgeItem, { foreignKey: "group_id" });
+db.FridgeItem.belongsTo(db.User, { foreignKey: "user_uuid", as: "creator" });
 
 db.MealPlan.belongsTo(db.Group, { foreignKey: "group_id" });
 db.Group.hasMany(db.MealPlan, { foreignKey: "group_id" });
+db.MealPlan.belongsTo(db.User, { foreignKey: "user_uuid", as: "creator" });
 db.MealPlan.belongsTo(db.Recipe, { foreignKey: "recipe_id" });
 db.Recipe.hasMany(db.MealPlan, { foreignKey: "recipe_id" });
 
 db.ShoppingList.belongsTo(db.Group, { foreignKey: "group_id" });
 db.Group.hasMany(db.ShoppingList, { foreignKey: "group_id" });
+db.ShoppingList.belongsTo(db.User, { foreignKey: "user_uuid", as: "creator" });
 db.ShoppingList.belongsTo(db.User, { foreignKey: "updated_by", as: "updatedBy" });
 db.User.hasMany(db.ShoppingList, { foreignKey: "updated_by", as: "updatedLists" });
+
+db.Group.belongsTo(db.User, { foreignKey: "user_uuid", as: "creator" });
 
 db.Recipe.belongsTo(db.User, { foreignKey: "user_uuid", as: "creator" });
 db.User.hasMany(db.Recipe, { foreignKey: "user_uuid", as: "recipes" });
