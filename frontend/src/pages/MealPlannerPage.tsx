@@ -343,9 +343,16 @@ export function MealPlannerPage() {
           mealPlanApi.getAll(),
         ]);
 
-        const mappedRecipes = apiRecipes.map(recipeFromApi);
+        const plannedRecipes = apiPlans
+          .map((item) => item.Recipe)
+          .filter((recipe): recipe is RecipeItem => Boolean(recipe));
+        const recipesById = new Map<number, Recipe>();
+        [...apiRecipes, ...plannedRecipes].forEach((recipe) => {
+          recipesById.set(recipe.id, recipeFromApi(recipe));
+        });
+        const mappedRecipes = [...recipesById.values()];
         setRecipeList(mappedRecipes);
-        setFavorites(new Set(mappedRecipes.map((r) => r.id)));
+        setFavorites(new Set(apiRecipes.map((r) => r.id)));
 
         setInventoryItems((apiIngredients.ingredients || []).map((item) => ({
           name: item.name,

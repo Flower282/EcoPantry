@@ -1,6 +1,12 @@
 const { FridgeItem, ShoppingList, Group, GroupMember, User } = require("../models");
 const { v4: uuidv4 } = require("uuid");
 
+const shoppingCategories = ["Rau củ", "Thịt cá", "Thực phẩm khô", "Gia vị"];
+
+function normalizeShoppingCategory(category) {
+  return shoppingCategories.includes(category) ? category : "Thực phẩm khô";
+}
+
 async function getOrCreateUserGroup(user_id) {
   const membership = await GroupMember.findOne({ where: { user_id } });
   if (membership) return membership.group_id;
@@ -74,7 +80,7 @@ const addShoppingItem = async (req, res) => {
       item_name,
       quantity: quantity || 1,
       unit: unit || "",
-      category: category || "",
+      category: normalizeShoppingCategory(category),
       emoji: emoji || "🛒",
       is_purchased: false,
       updated_by: req.user.id,
@@ -131,8 +137,9 @@ const clearPurchasedItems = async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not Found" });
 
     const newIngredients = purchasedItems.map((item) => {
-      const storage = item.category === "Thịt cá" || item.category === "Rau củ" ? "cold" : "dry";
-      const daysLeft = item.category === "Thịt cá" ? 3 : item.category === "Rau củ" ? 7 : 30;
+      const category = normalizeShoppingCategory(item.category);
+      const storage = category === "Thịt cá" || category === "Rau củ" ? "cold" : "dry";
+      const daysLeft = category === "Thịt cá" ? 3 : category === "Rau củ" ? 7 : 30;
 
       return {
         group_id,
@@ -141,7 +148,7 @@ const clearPurchasedItems = async (req, res) => {
         quantity: item.quantity || 1,
         unit: item.unit || "",
         expiry_date: new Date(Date.now() + daysLeft * 86400000),
-        category: item.category || "Thực phẩm khô",
+        category,
         emoji: item.emoji || "🛒",
         storage,
         notes: "Tự động thêm từ danh sách đi chợ",
