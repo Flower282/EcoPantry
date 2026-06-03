@@ -14,17 +14,21 @@ async function getOrCreateUserGroup(user_id) {
   return group.id;
 }
 
+function getGroupWithMembers(group_id) {
+  return Group.findByPk(group_id, {
+    include: [{
+      model: User,
+      as: "members",
+      attributes: ["id", "name", "email"],
+      through: { attributes: ["role"] },
+    }],
+  });
+}
+
 const getCurrentGroup = async (req, res) => {
   try {
     const group_id = await getOrCreateUserGroup(req.user.id);
-    const group = await Group.findByPk(group_id, {
-      include: [{
-        model: User,
-        as: "members",
-        attributes: ["id", "name", "email"],
-        through: { attributes: ["role"] },
-      }],
-    });
+    const group = await getGroupWithMembers(group_id);
 
     res.status(200).json({ group });
   } catch (error) {
@@ -44,9 +48,29 @@ const createGroup = async (req, res) => {
 
     await GroupMember.destroy({ where: { user_id: req.user.id } });
     await GroupMember.create({ user_id: req.user.id, group_id: group.id, role: "Admin" });
-    res.status(201).json({ group });
+    const groupWithMembers = await getGroupWithMembers(group.id);
+    res.status(201).json({ group: groupWithMembers });
   } catch (error) {
     console.error("Error creating group:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const updateCurrentGroup = async (req, res) => {
+  try {
+    const { group_name } = req.body;
+    const group_id = await getOrCreateUserGroup(req.user.id);
+    const group = await Group.findByPk(group_id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    await group.update({
+      group_name: group_name?.trim() || group.group_name,
+    });
+
+    const groupWithMembers = await getGroupWithMembers(group.id);
+    res.status(200).json({ group: groupWithMembers });
+  } catch (error) {
+    console.error("Error updating group:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -61,9 +85,16 @@ const joinGroup = async (req, res) => {
     });
     if (!group) return res.status(404).json({ error: "Invite code not found" });
 
+    const currentMembership = await GroupMember.findOne({ where: { user_id: req.user.id } });
+    if (currentMembership?.group_id === group.id) {
+      const groupWithMembers = await getGroupWithMembers(group.id);
+      return res.status(200).json({ group: groupWithMembers });
+    }
+
     await GroupMember.destroy({ where: { user_id: req.user.id } });
     await GroupMember.create({ user_id: req.user.id, group_id: group.id, role: "Member" });
-    res.status(200).json({ group });
+    const groupWithMembers = await getGroupWithMembers(group.id);
+    res.status(200).json({ group: groupWithMembers });
   } catch (error) {
     console.error("Error joining group:", error);
     res.status(500).json({ error: error.message });
@@ -73,5 +104,6 @@ const joinGroup = async (req, res) => {
 module.exports = {
   getCurrentGroup,
   createGroup,
+  updateCurrentGroup,
   joinGroup,
 };

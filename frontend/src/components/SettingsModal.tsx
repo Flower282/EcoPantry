@@ -23,6 +23,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [group, setGroup] = useState<FamilyGroup | null>(null);
   const [groupName, setGroupName] = useState('Gia đình của tôi');
   const [inviteCode, setInviteCode] = useState('');
+  const currentMember = group?.members?.find((member) => member.email === user?.email);
+  const isGroupAdmin = currentMember?.GroupMember?.role === 'Admin';
 
   // Fetch preferences when opened
   useEffect(() => {
@@ -64,18 +66,47 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await preferencesApi.set(dietary);
         toast.success('Đã lưu sở thích ăn uống');
       } else {
-        const code = inviteCode.trim();
-        const data = code
-          ? await groupsApi.join(code)
-          : await groupsApi.create(groupName.trim() || 'Gia đình của tôi');
+        if (!isGroupAdmin) {
+          toast.info('Chỉ Admin mới có thể đổi tên nhóm');
+          setIsSaving(false);
+          return;
+        }
+
+        if (groupName.trim() === group?.group_name) {
+          toast.info('Tên nhóm chưa thay đổi');
+          onClose();
+          return;
+        }
+
+        const data = await groupsApi.updateCurrent(groupName.trim() || 'Gia đình của tôi');
         setGroup(data.group);
         setGroupName(data.group.group_name);
-        setInviteCode('');
-        toast.success(code ? 'Đã tham gia nhóm gia đình' : 'Đã cập nhật nhóm gia đình');
+        toast.success('Đã cập nhật nhóm gia đình');
       }
       onClose();
     } catch (err) {
       toast.error('Có lỗi xảy ra: ' + (err as Error).message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleJoinGroup = async () => {
+    const code = inviteCode.trim();
+    if (!code) {
+      toast.error('Vui lòng nhập mã mời');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const data = await groupsApi.join(code);
+      setGroup(data.group);
+      setGroupName(data.group.group_name);
+      setInviteCode('');
+      toast.success('Đã tham gia nhóm gia đình');
+    } catch (err) {
+      toast.error('Không thể tham gia nhóm: ' + (err as Error).message);
     } finally {
       setIsSaving(false);
     }
@@ -200,7 +231,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   type="text"
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                  disabled={!isGroupAdmin}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
                   placeholder="Gia đình của tôi"
                 />
               </div>
@@ -221,9 +253,23 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   type="text"
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleJoinGroup();
+                    }
+                  }}
                   className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all uppercase"
                   placeholder="VD: A1B2C3D4"
                 />
+                <button
+                  type="button"
+                  onClick={handleJoinGroup}
+                  disabled={isSaving || !inviteCode.trim()}
+                  className="mt-2 w-full px-4 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Tham gia nhóm
+                </button>
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-700">Thành viên</p>

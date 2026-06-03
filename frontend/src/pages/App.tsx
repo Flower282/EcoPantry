@@ -12,18 +12,18 @@ import { LoginPage } from './LoginPage';
 import { SettingsModal } from '@/components/SettingsModal';
 import { RecipesPage } from '@/pages/RecipesPage';
 import { ShoppingPage } from './ShoppingPage';
-import { ingredientsApi } from '@/lib/api';
+import { groupsApi, ingredientsApi, shoppingApi, type FamilyGroup } from '@/lib/api';
 
 const navItems: { id: TabType; label: string; icon: ElementType; badge?: number }[] = [
   { id: 'home',      label: 'Trang chủ',     icon: Home },
-  { id: 'inventory', label: 'Kho thực phẩm', icon: Refrigerator, badge: 4 },
+  { id: 'inventory', label: 'Kho thực phẩm', icon: Refrigerator },
   { id: 'recipes',   label: 'Công thức',     icon: ChefHat },
   { id: 'planner',   label: 'Kế hoạch',      icon: Calendar },
-  { id: 'shopping',  label: 'Đi chợ',        icon: ShoppingCart, badge: 6 },
+  { id: 'shopping',  label: 'Đi chợ',        icon: ShoppingCart },
 ];
 
 const pageTitles: Record<TabType, { title: string; subtitle: string }> = {
-  home:      { title: 'Tổng quan',          subtitle: 'Chào buổi sáng, gia đình Nguyễn!' },
+  home:      { title: 'Tổng quan',          subtitle: '' },
   inventory: { title: 'Kho thực phẩm',      subtitle: 'Quản lý nguyên liệu theo khu vực lưu trữ' },
   recipes:   { title: 'Công thức nấu ăn',   subtitle: 'Gợi ý món ăn từ nguyên liệu sẵn có' },
   planner:   { title: 'Kế hoạch nấu ăn',    subtitle: 'Lên thực đơn theo ngày và theo tuần' },
@@ -35,6 +35,15 @@ const notifications = [
   { id: 2, title: 'Mẹ đã thêm Rau cải vào giỏ', desc: 'Danh sách đi chợ đã được cập nhật', time: '2 giờ trước', unread: true },
   { id: 3, title: 'Cá hồi phi lê đã hết hạn', desc: 'Vui lòng kiểm tra và xoá khỏi kho', time: 'Hôm qua', unread: false },
 ];
+
+function getInitials(value: string | undefined) {
+  return (value || 'EcoPantry')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'EP';
+}
 
 type NotificationItem = {
   id: number;
@@ -54,18 +63,32 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [familyGroup, setFamilyGroup] = useState<FamilyGroup | null>(null);
+  const [navBadges, setNavBadges] = useState<Partial<Record<TabType, number>>>({});
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-
-  if (!user) return <LoginPage />;
 
   useClickOutside(notifRef, () => setNotifOpen(false), notifOpen);
   useClickOutside(profileRef, () => setProfileOpen(false), profileOpen);
 
-  const currentPage = pageTitles[activeTab];
+  const currentMember = familyGroup?.members?.find((member) => member.email === user?.email);
+  const groupName = familyGroup?.group_name || user?.name || 'EcoPantry';
+  const memberCount = familyGroup?.members?.length || (user ? 1 : 0);
+  const currentRole = currentMember?.GroupMember?.role || 'Admin';
+  const groupInitials = getInitials(groupName);
+  const groupMeta = `${memberCount} thành viên • ${currentRole}`;
+  const currentPage = activeTab === 'home'
+    ? { ...pageTitles.home, subtitle: `Chào buổi sáng, ${groupName}!` }
+    : pageTitles[activeTab];
+  const sidebarItems = navItems.map((item) => ({
+    ...item,
+    badge: navBadges[item.id],
+  }));
 
   useEffect(() => {
     const loadNotifications = async () => {
+      if (!user) return;
+
       try {
         const data = await ingredientsApi.getAll();
         const dynamic = (data.ingredients || [])
@@ -94,7 +117,46 @@ export default function App() {
     };
 
     loadNotifications();
-  }, []);
+  }, [user]);
+
+  useEffect(() => {
+    const loadFamilyGroup = async () => {
+      if (!user) return;
+
+      try {
+        const data = await groupsApi.current();
+        setFamilyGroup(data.group);
+      } catch {
+        setFamilyGroup(null);
+      }
+    };
+
+    loadFamilyGroup();
+  }, [user, settingsOpen]);
+
+  useEffect(() => {
+    const loadNavBadges = async () => {
+      if (!user) return;
+
+      try {
+        const [inventoryData, shoppingItems] = await Promise.all([
+          ingredientsApi.getAll(),
+          shoppingApi.getAll(),
+        ]);
+
+        setNavBadges({
+          inventory: inventoryData.ingredients?.length || 0,
+          shopping: shoppingItems.filter((item) => !item.is_purchased).length,
+        });
+      } catch {
+        setNavBadges({});
+      }
+    };
+
+    loadNavBadges();
+  }, [user, activeTab]);
+
+  if (!user) return <LoginPage />;
 
   const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -163,7 +225,7 @@ export default function App() {
             </p>
           </div>
 
-          {navItems.map((item) => {
+          {sidebarItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
@@ -243,13 +305,13 @@ export default function App() {
           {collapsed ? (
             <div className="relative group/user flex justify-center">
               <div className="w-9 h-9 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center cursor-pointer">
-                <span className="text-white" style={{ fontSize: '0.75rem', fontWeight: 700 }}>NH</span>
+                <span className="text-white" style={{ fontSize: '0.75rem', fontWeight: 700 }}>{groupInitials}</span>
               </div>
               <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50
                 opacity-0 group-hover/user:opacity-100 transition-opacity duration-150">
                 <div className="bg-slate-900 text-white rounded-lg shadow-lg px-3 py-2 whitespace-nowrap">
-                  <p style={{ fontSize: '0.78rem', fontWeight: 600 }}>Gia đình Nguyễn</p>
-                  <p className="text-slate-300 mt-0.5" style={{ fontSize: '0.68rem' }}>4 thành viên • Admin</p>
+                  <p style={{ fontSize: '0.78rem', fontWeight: 600 }}>{groupName}</p>
+                  <p className="text-slate-300 mt-0.5" style={{ fontSize: '0.68rem' }}>{groupMeta}</p>
                 </div>
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 w-2 h-2 bg-slate-900 rotate-45" />
               </div>
@@ -260,11 +322,11 @@ export default function App() {
               className="w-full flex items-center gap-3 hover:bg-slate-50 -m-1 p-1 rounded-lg transition-colors"
             >
               <div className="w-9 h-9 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shrink-0">
-                <span className="text-white" style={{ fontSize: '0.8rem', fontWeight: 700 }}>NH</span>
+                <span className="text-white" style={{ fontSize: '0.8rem', fontWeight: 700 }}>{groupInitials}</span>
               </div>
               <div className="flex-1 min-w-0 text-left">
-                <p className="text-slate-900 truncate" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Gia đình Nguyễn</p>
-                <p className="text-slate-400 truncate" style={{ fontSize: '0.7rem' }}>4 thành viên • Admin</p>
+                <p className="text-slate-900 truncate" style={{ fontSize: '0.8rem', fontWeight: 600 }}>{groupName}</p>
+                <p className="text-slate-400 truncate" style={{ fontSize: '0.7rem' }}>{groupMeta}</p>
               </div>
               <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             </button>

@@ -1,9 +1,14 @@
 const { Op } = require("sequelize");
-const { Recipe, User } = require("../models");
+const { FridgeItem, GroupMember, Recipe, User } = require("../models");
 // const OpenAI = require("openai");
 require("dotenv").config();
 
 // const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API_KEY });
+
+async function getUserGroupId(user_id) {
+  const membership = await GroupMember.findOne({ where: { user_id } });
+  return membership?.group_id || null;
+}
 
 const getRecipes = async (req, res) => {
   const user_uuid = req.user.id;
@@ -149,7 +154,8 @@ const generateRecipes = async (req, res) => {
       return res.status(404).send("No user found");
     }
 
-    let userIngredients = user.ingredients || [];
+    const group_id = await getUserGroupId(user_uuid);
+    let userIngredients = group_id ? await FridgeItem.findAll({ where: { group_id } }) : [];
     let userPreferences = user.dietary_preferences || "";
 
     if (!userIngredients.length) {
@@ -162,7 +168,7 @@ const generateRecipes = async (req, res) => {
         const unitPart = ingredient.unit
           ? `${ingredient.quantity} ${ingredient.unit} of `
           : `${ingredient.quantity} `;
-        return `${unitPart}${ingredient.name} (Notes: ${ingredient.notes || ""})`;
+        return `${unitPart}${ingredient.item_name} (Notes: ${ingredient.notes || ""})`;
       })
       .join(", ");
 
