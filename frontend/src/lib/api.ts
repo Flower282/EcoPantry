@@ -219,6 +219,12 @@ export const groupsApi = {
       body: JSON.stringify({ group_name }),
     }),
 
+  updateCurrent: (group_name: string) =>
+    request<{ group: FamilyGroup }>('/groups/current', {
+      method: 'POST',
+      body: JSON.stringify({ group_name }),
+    }),
+
   join: (invite_code: string) =>
     request<{ group: FamilyGroup }>('/groups/join', {
       method: 'POST',

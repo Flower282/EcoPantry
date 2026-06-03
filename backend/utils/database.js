@@ -38,6 +38,12 @@ const shouldUseSsl = isProduction || Boolean(dbCa);
 const commonOptions = {
   dialect: "postgres",
   logging: false,
+  pool: {
+    max: Number(process.env.DB_POOL_MAX || 2),
+    min: Number(process.env.DB_POOL_MIN || 0),
+    acquire: Number(process.env.DB_POOL_ACQUIRE || 30000),
+    idle: Number(process.env.DB_POOL_IDLE || 10000),
+  },
   dialectOptions: shouldUseSsl
     ? {
         ssl: dbCa
@@ -70,9 +76,20 @@ const sequelize = process.env.DB_URL
       },
     );
 
+const ensureFridgeItemColumns = async () => {
+  await sequelize.query(`
+    ALTER TABLE IF EXISTS fridge_items
+      ADD COLUMN IF NOT EXISTS category VARCHAR(255) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS emoji VARCHAR(255) NOT NULL DEFAULT '🛒',
+      ADD COLUMN IF NOT EXISTS storage VARCHAR(255) NOT NULL DEFAULT 'dry',
+      ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+  `);
+};
+
 const connectToDb = async () => {
   try {
     await sequelize.authenticate();
+    await ensureFridgeItemColumns();
     console.log("Connected to Database!");
   } catch (error) {
     console.error("Error connecting to the database:", error);

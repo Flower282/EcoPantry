@@ -1,21 +1,48 @@
-const { ShoppingList, Group, GroupMember, User } = require("../models");
+const { FridgeItem, ShoppingList, Group, GroupMember, User } = require("../models");
 const { v4: uuidv4 } = require("uuid");
 
-// Helper: get or create a default group for a user
 async function getOrCreateUserGroup(user_id) {
-  // Find existing group membership
   const membership = await GroupMember.findOne({ where: { user_id } });
   if (membership) return membership.group_id;
 
-  // Create a default personal group
   const group = await Group.create({
     group_name: "Gia đình của tôi",
     invite_code: uuidv4().slice(0, 8).toUpperCase(),
     user_uuid: user_id,
   });
 
-  await GroupMember.create({ user_id, group_id: group.id });
+  await GroupMember.create({ user_id, group_id: group.id, role: "Admin" });
   return group.id;
+}
+
+function daysUntil(date) {
+  if (!date) return 30;
+  return Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
+}
+
+function statusFromDaysLeft(daysLeft) {
+  if (daysLeft < 0) return "expired";
+  if (daysLeft <= 3) return "expiring";
+  return "fresh";
+}
+
+function toIngredient(item) {
+  const daysLeft = daysUntil(item.expiry_date);
+
+  return {
+    id: String(item.id),
+    name: item.item_name,
+    category: item.category,
+    quantity: item.quantity,
+    unit: item.unit,
+    emoji: item.emoji,
+    storage: item.storage,
+    daysLeft,
+    expiryDate: new Date(item.expiry_date).toLocaleDateString("vi-VN"),
+    addedDate: new Date(item.createdAt).toLocaleDateString("vi-VN"),
+    status: statusFromDaysLeft(daysLeft),
+    notes: item.notes,
+  };
 }
 
 // GET /api/shopping
@@ -103,30 +130,31 @@ const clearPurchasedItems = async (req, res) => {
     const user = await User.findByPk(req.user.id);
     if (!user) return res.status(404).json({ error: "User not Found" });
 
-    const existingIngredients = Array.isArray(user.ingredients) ? user.ingredients : [];
-    const newIngredients = purchasedItems.map((item) => ({
-      id: `shopping_${item.id}_${Date.now()}`,
-      name: item.item_name,
-      category: item.category || "Thực phẩm khô",
-      quantity: String(item.quantity || 1),
-      unit: item.unit || "",
-      emoji: item.emoji || "🛒",
-      storage: item.category === "Thịt cá" || item.category === "Rau củ" ? "cold" : "dry",
-      daysLeft: item.category === "Thịt cá" ? 3 : item.category === "Rau củ" ? 7 : 30,
-      expiryDate: new Date(
-        Date.now() + (item.category === "Thịt cá" ? 3 : item.category === "Rau củ" ? 7 : 30) * 86400000,
-      ).toLocaleDateString("vi-VN"),
-      addedDate: new Date().toLocaleDateString("vi-VN"),
-      status: "fresh",
-      notes: "Tự động thêm từ danh sách đi chợ",
-    }));
+    const newIngredients = purchasedItems.map((item) => {
+      const storage = item.category === "Thịt cá" || item.category === "Rau củ" ? "cold" : "dry";
+      const daysLeft = item.category === "Thịt cá" ? 3 : item.category === "Rau củ" ? 7 : 30;
 
-    await user.update({ ingredients: [...newIngredients, ...existingIngredients] });
+      return {
+        group_id,
+        user_uuid: req.user.id,
+        item_name: item.item_name,
+        quantity: item.quantity || 1,
+        unit: item.unit || "",
+        expiry_date: new Date(Date.now() + daysLeft * 86400000),
+        category: item.category || "Thực phẩm khô",
+        emoji: item.emoji || "🛒",
+        storage,
+        notes: "Tự động thêm từ danh sách đi chợ",
+      };
+    });
+
+    const createdIngredients = await FridgeItem.bulkCreate(newIngredients, { returning: true });
     await ShoppingList.destroy({ where: { group_id, is_purchased: true } });
+
     res.status(200).json({
       message: "Cleared purchased items",
-      transferred: newIngredients.length,
-      ingredients: user.ingredients,
+      transferred: createdIngredients.length,
+      ingredients: createdIngredients.map(toIngredient),
     });
   } catch (error) {
     console.error("Error clearing purchased items:", error);

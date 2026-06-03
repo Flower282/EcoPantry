@@ -1,32 +1,129 @@
 require("dotenv").config();
-const { User } = require("../models");
+const { FridgeItem, Group, GroupMember, User } = require("../models");
 const fs = require("fs");
+const { v4: uuidv4 } = require("uuid");
 // const OpenAI = require("openai");
 
 // const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API_KEY });
 
+async function getOrCreateUserGroup(user_id) {
+  const membership = await GroupMember.findOne({ where: { user_id } });
+  if (membership) return membership.group_id;
+
+  const group = await Group.create({
+    group_name: "Gia đình của tôi",
+    invite_code: uuidv4().slice(0, 8).toUpperCase(),
+    user_uuid: user_id,
+  });
+  await GroupMember.create({ user_id, group_id: group.id, role: "Admin" });
+  return group.id;
+}
+
+function toDateString(date) {
+  if (!date) return "";
+  return new Date(date).toLocaleDateString("vi-VN");
+}
+
+function daysUntil(date) {
+  if (!date) return 30;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const expiry = new Date(date);
+  expiry.setHours(0, 0, 0, 0);
+
+  return Math.ceil((expiry.getTime() - today.getTime()) / 86400000);
+}
+
+function statusFromDaysLeft(daysLeft) {
+  if (daysLeft < 0) return "expired";
+  if (daysLeft <= 3) return "expiring";
+  return "fresh";
+}
+
+function toIngredient(item) {
+  const daysLeft = daysUntil(item.expiry_date);
+
+  return {
+    id: String(item.id),
+    name: item.item_name,
+    category: item.category || "Thực phẩm khô",
+    quantity: item.quantity ?? 1,
+    unit: item.unit || "",
+    emoji: item.emoji || "🛒",
+    storage: item.storage || "dry",
+    daysLeft,
+    expiryDate: toDateString(item.expiry_date),
+    addedDate: toDateString(item.createdAt),
+    status: statusFromDaysLeft(daysLeft),
+    notes: item.notes || "",
+  };
+}
+
+function toFridgeItem(ingredient, group_id, user_uuid) {
+  const daysLeft = Number(ingredient.daysLeft ?? 30);
+
+  return {
+    group_id,
+    user_uuid,
+    item_name: ingredient.name,
+    quantity: Number(ingredient.quantity) || 1,
+    unit: ingredient.unit || "",
+    expiry_date: new Date(Date.now() + daysLeft * 86400000),
+    category: ingredient.category || "Thực phẩm khô",
+    emoji: ingredient.emoji || "🛒",
+    storage: ingredient.storage || "dry",
+    notes: ingredient.notes || "",
+  };
+}
+
 const getIngredients = async (req, res) => {
-  const user_uuid = req.user.id;
-  const user = await User.findByPk(user_uuid);
+  try {
+    const group_id = await getOrCreateUserGroup(req.user.id);
+    let items = await FridgeItem.findAll({
+      where: { group_id },
+      order: [["createdAt", "DESC"]],
+    });
 
-  if (!user) {
-    return res.status(404).json({ error: "User not Found" });
+    if (items.length === 0) {
+      const user = await User.findByPk(req.user.id);
+      const legacyIngredients = Array.isArray(user?.ingredients) ? user.ingredients : [];
+      if (legacyIngredients.length > 0) {
+        items = await FridgeItem.bulkCreate(
+          legacyIngredients.map((ingredient) => toFridgeItem(ingredient, group_id, req.user.id)),
+          { returning: true },
+        );
+      }
+    }
+
+    res.status(200).json({ ingredients: items.map(toIngredient) });
+  } catch (error) {
+    console.error("Error fetching ingredients:", error);
+    res.status(500).json({ error: error.message });
   }
-
-  res.status(200).json({ ingredients: user.ingredients });
 };
 
 const updateIngredients = async (req, res) => {
-  const user_uuid = req.user.id;
-  const { ingredients } = req.body;
+  try {
+    const user_uuid = req.user.id;
+    const { ingredients } = req.body;
+    if (!Array.isArray(ingredients)) {
+      return res.status(400).json({ error: "ingredients must be an array" });
+    }
 
-  const user = await User.findByPk(user_uuid);
-  if (!user) {
-    return res.status(404).json({ error: "User not Found" });
+    const group_id = await getOrCreateUserGroup(user_uuid);
+    await FridgeItem.destroy({ where: { group_id } });
+
+    const created = await FridgeItem.bulkCreate(
+      ingredients.map((ingredient) => toFridgeItem(ingredient, group_id, user_uuid)),
+      { returning: true },
+    );
+
+    res.status(200).json({ ingredients: created.map(toIngredient) });
+  } catch (error) {
+    console.error("Error updating ingredients:", error);
+    res.status(500).json({ error: error.message });
   }
-
-  await user.update({ ingredients });
-  res.status(200).json({ ingredients: user.ingredients });
 };
 
 function convertImageToBase64(filePath) {
@@ -42,13 +139,7 @@ function convertImageToBase64(filePath) {
 }
 
 const generateIngredients = async (req, res) => {
-  const user_uuid = req.user.id;
   const file_info = req.files[0];
-  const user = await User.findByPk(user_uuid);
-
-  if (!user) {
-    return res.status(404).json({ error: "User not Found" });
-  }
 
   try {
     const base64Image = await convertImageToBase64(file_info.path);
@@ -78,7 +169,7 @@ const generateIngredients = async (req, res) => {
     // });
 
     // const ingredients = JSON.parse(response.choices[0].message.content).items;
-    // await user.update({ ingredients: ingredients.concat(user.ingredients) });
+    // Persist generated items to fridge_items here if this route is re-enabled.
     // const user_updated = await User.findByPk(user_uuid);
 
     fs.unlink(req.files[0].path, (err) => {

@@ -28,6 +28,26 @@ module.exports = (sequelize, DataTypes) =>
         type: DataTypes.DATE,
         allowNull: true,
       },
+      category: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "",
+      },
+      emoji: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "🛒",
+      },
+      storage: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "dry",
+      },
+      notes: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: "",
+      },
     },
     {
       tableName: "fridge_items",

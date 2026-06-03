@@ -1,4 +1,4 @@
-const { GroupMember, MealPlan, Recipe, ShoppingList, User } = require("../models");
+const { FridgeItem, GroupMember, MealPlan, Recipe, ShoppingList, User } = require("../models");
 
 async function getUserGroupId(user_id) {
   const membership = await GroupMember.findOne({ where: { user_id } });
@@ -10,8 +10,8 @@ const getSummary = async (req, res) => {
     const user = await User.findByPk(req.user.id);
     if (!user) return res.status(404).json({ error: "User not Found" });
 
-    const ingredients = Array.isArray(user.ingredients) ? user.ingredients : [];
     const group_id = await getUserGroupId(req.user.id);
+    const ingredients = group_id ? await FridgeItem.findAll({ where: { group_id } }) : [];
     const shoppingItems = group_id ? await ShoppingList.findAll({ where: { group_id } }) : [];
     const mealPlans = group_id ? await MealPlan.findAll({ where: { group_id } }) : [];
     const savedRecipes = await Recipe.count();
@@ -28,8 +28,12 @@ const getSummary = async (req, res) => {
       return acc;
     }, {});
 
-    const expiringSoon = ingredients.filter((item) => Number(item.daysLeft) >= 0 && Number(item.daysLeft) <= 3);
-    const expired = ingredients.filter((item) => Number(item.daysLeft) < 0);
+    const daysUntil = (date) => Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
+    const expiringSoon = ingredients.filter((item) => {
+      const daysLeft = daysUntil(item.expiry_date);
+      return daysLeft >= 0 && daysLeft <= 3;
+    });
+    const expired = ingredients.filter((item) => daysUntil(item.expiry_date) < 0);
 
     res.status(200).json({
       inventory: {
