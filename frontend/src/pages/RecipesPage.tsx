@@ -5,7 +5,8 @@ import {
   Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, X, Heart,
   Filter, Star, ArrowRight, Wand2, Loader2,
 } from 'lucide-react';
-import { recipesApi, shoppingApi, type RecipeItem } from '@/lib/api';
+import { ingredientsApi, recipesApi, shoppingApi, type IngredientItem, type RecipeItem } from '@/lib/api';
+import { normaliseWeight, parseQty } from '@/lib/quantity';
 
 type Difficulty = 'Dễ' | 'Trung bình' | 'Khó';
 type Category = 'personal' | 'community';
@@ -173,6 +174,99 @@ function DifficultyBadge({ level }: { level: Difficulty }) {
   );
 }
 
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeUnit(unit: string) {
+  const value = normalizeText(unit);
+  if (['g', 'gram', 'gam'].includes(value)) return 'g';
+  if (['kg', 'kilogram'].includes(value)) return 'kg';
+  if (['ml', 'mililit'].includes(value)) return 'ml';
+  if (['l', 'lit', 'lít'].includes(unit.toLowerCase())) return 'l';
+  return value;
+}
+
+function parseAmount(amount: string) {
+  const parsed = parseQty(amount);
+  if (!parsed) return null;
+  return { value: parsed.value, unit: normalizeUnit(parsed.unit) };
+}
+
+function ingredientNameMatches(recipeName: string, inventoryName: string) {
+  const recipe = normalizeText(recipeName);
+  const inventory = normalizeText(inventoryName);
+  return recipe === inventory || recipe.includes(inventory) || inventory.includes(recipe);
+}
+
+function findInventoryMatch(ingredient: Ingredient, inventoryItems: IngredientItem[]) {
+  return inventoryItems.find((item) => ingredientNameMatches(ingredient.name, item.name));
+}
+
+function hasEnoughIngredient(ingredient: Ingredient, inventoryItems: IngredientItem[]) {
+  const item = findInventoryMatch(ingredient, inventoryItems);
+  if (!item) return false;
+
+  const needed = parseAmount(ingredient.amount);
+  const stock = parseAmount(`${item.quantity} ${item.unit}`);
+  if (!needed || !stock) return Number(item.quantity) > 0;
+
+  const neededNorm = normaliseWeight(needed.value, needed.unit);
+  const stockNorm = normaliseWeight(stock.value, stock.unit);
+  if (neededNorm.base !== stockNorm.base) return Number(item.quantity) > 0;
+  if (neededNorm.base === 'other' && needed.unit !== stock.unit) return Number(item.quantity) > 0;
+
+  return stockNorm.value >= neededNorm.value;
+}
+
+function applyInventoryToRecipe(recipe: Recipe, inventoryItems: IngredientItem[]): Recipe {
+  const ingredients = recipe.ingredients.map((ingredient) => ({
+    ...ingredient,
+    available: hasEnoughIngredient(ingredient, inventoryItems),
+  }));
+  const availableCount = ingredients.filter((ingredient) => ingredient.available).length;
+
+  return {
+    ...recipe,
+    ingredients,
+    readyPercent: ingredients.length ? Math.round((availableCount / ingredients.length) * 100) : 0,
+  };
+}
+
+function deductIngredientFromInventory(ingredient: Ingredient, inventoryItems: IngredientItem[]) {
+  let deducted = false;
+  const needed = parseAmount(ingredient.amount);
+
+  return inventoryItems
+    .map((item) => {
+      if (deducted || !ingredientNameMatches(ingredient.name, item.name)) return item;
+
+      const stock = parseAmount(`${item.quantity} ${item.unit}`);
+      if (!needed || !stock) return item;
+
+      const neededNorm = normaliseWeight(needed.value, needed.unit);
+      const stockNorm = normaliseWeight(stock.value, stock.unit);
+      if (neededNorm.base !== stockNorm.base) return item;
+      if (neededNorm.base === 'other' && needed.unit !== stock.unit) return item;
+
+      const remainingBaseValue = Math.max(0, stockNorm.value - neededNorm.value);
+      const itemUnit = normalizeUnit(item.unit);
+      const remaining = itemUnit === 'kg' || itemUnit === 'l'
+        ? remainingBaseValue / 1000
+        : remainingBaseValue;
+
+      deducted = true;
+      return { ...item, quantity: Number(remaining.toFixed(2)).toString() };
+    })
+    .filter((item) => Number(item.quantity) > 0);
+}
+
 function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
   return {
     id: r.id,
@@ -189,7 +283,7 @@ function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
     ingredients: (r.ingredients || []).map((ing) => ({
       name: ing.name,
       amount: `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}`,
-      available: true,
+      available: false,
     })),
     steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
     tags: r.tags || [],
@@ -198,6 +292,7 @@ function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
 
 export function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<IngredientItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [category, setCategory] = useState<Category>('personal');
   const [searchQuery, setSearchQuery] = useState('');
@@ -219,6 +314,8 @@ export function RecipesPage() {
           recipesApi.getAll(),
           recipesApi.getCommunity(),
         ]);
+        const inventoryData = await ingredientsApi.getAll();
+        const inventory = inventoryData.ingredients || [];
         if (savedResult.status === 'rejected') {
           throw savedResult.reason;
         }
@@ -228,8 +325,9 @@ export function RecipesPage() {
         if (communityResult.status === 'rejected') {
           toast.error('Không thể tải công thức cộng đồng: ' + (communityResult.reason as Error).message);
         }
-        const personalMapped: Recipe[] = apiRecipes.map((recipe) => mapApiRecipe(recipe, 'personal'));
-        const communityMapped: Recipe[] = communityRecipes.map((recipe) => mapApiRecipe(recipe, 'community'));
+        const personalMapped: Recipe[] = apiRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventory));
+        const communityMapped: Recipe[] = communityRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'community'), inventory));
+        setInventoryItems(inventory);
         setRecipes([...personalMapped, ...communityMapped]);
         setSelectedId(personalMapped[0]?.id ?? communityMapped[0]?.id ?? null);
         if (personalMapped.length === 0 && communityMapped.length > 0) {
@@ -274,6 +372,8 @@ export function RecipesPage() {
       recipesApi.getAll(),
       recipesApi.getCommunity(),
     ]);
+    const inventoryData = await ingredientsApi.getAll();
+    const inventory = inventoryData.ingredients || [];
     if (savedResult.status === 'rejected') {
       throw savedResult.reason;
     }
@@ -283,8 +383,9 @@ export function RecipesPage() {
     if (communityResult.status === 'rejected') {
       toast.error('Không thể tải công thức cộng đồng: ' + (communityResult.reason as Error).message);
     }
-    const personalMapped = apiRecipes.map((recipe) => mapApiRecipe(recipe, 'personal'));
-    const communityMapped = communityRecipes.map((recipe) => mapApiRecipe(recipe, 'community'));
+    const personalMapped = apiRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventory));
+    const communityMapped = communityRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'community'), inventory));
+    setInventoryItems(inventory);
     setRecipes([...personalMapped, ...communityMapped]);
     setBookmarked(new Set(personalMapped.map((r) => r.id)));
     setSelectedId((current) => current ?? personalMapped[0]?.id ?? communityMapped[0]?.id ?? null);
@@ -316,7 +417,7 @@ export function RecipesPage() {
       const detail = await recipesApi.getById(id);
       const currentCategory = recipes.find((recipe) => recipe.id === id)?.category ?? 'community';
       setRecipes((prev) => prev.map((recipe) =>
-        recipe.id === id ? mapApiRecipe(detail, currentCategory) : recipe,
+        recipe.id === id ? applyInventoryToRecipe(mapApiRecipe(detail, currentCategory), inventoryItems) : recipe,
       ));
     } catch (err) {
       toast.error('Không thể tải chi tiết công thức: ' + (err as Error).message);
@@ -330,7 +431,7 @@ export function RecipesPage() {
         item_name: ing.name,
         quantity: 1,
         unit: ing.amount,
-        category: selected.tags[0] || 'Thực phẩm khô',
+        category: 'Thực phẩm khô',
         emoji: '🛒',
       })));
       toast.success(`Đã thêm ${missing.length} nguyên liệu vào danh sách đi chợ`);
@@ -344,6 +445,25 @@ export function RecipesPage() {
     setCookingId(selected.id);
     setActiveStep(0);
     toast.info('Bắt đầu nấu — chúc ngon miệng!');
+  };
+
+  const finishCooking = async () => {
+    if (!selected) return;
+
+    try {
+      const updatedInventory = selected.ingredients.reduce(
+        (items, ingredient) => deductIngredientFromInventory(ingredient, items),
+        inventoryItems,
+      );
+
+      await ingredientsApi.update(updatedInventory);
+      setInventoryItems(updatedInventory);
+      setRecipes((prev) => prev.map((recipe) => applyInventoryToRecipe(recipe, updatedInventory)));
+      setCookingId(null);
+      toast.success('Hoàn thành! Kho nguyên liệu đã được cập nhật.');
+    } catch (err) {
+      toast.error('Không thể cập nhật kho sau khi nấu: ' + (err as Error).message);
+    }
   };
 
   const handleCreateRecipe = async (data: NewRecipeData) => {
@@ -372,7 +492,7 @@ export function RecipesPage() {
         created_by_name: '',
       });
 
-      const mapped = savedRecipes.map((recipe) => mapApiRecipe(recipe, 'personal'));
+      const mapped = savedRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventoryItems));
       setRecipes((prev) => [
         ...mapped,
         ...prev.filter((r) => r.category === 'community'),
@@ -740,7 +860,7 @@ export function RecipesPage() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => { setCookingId(null); toast.success('Hoàn thành! Chúc cả nhà ngon miệng.'); }}
+                      onClick={finishCooking}
                       className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
                       style={{ fontSize: '0.78rem', fontWeight: 600 }}
                     >

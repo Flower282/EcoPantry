@@ -10,6 +10,10 @@ import {
 } from "@/stores/shoppingListStore";
 import { shoppingApi } from "@/lib/api";
 
+function isShoppingCategory(value: unknown): value is ShoppingCategory {
+  return typeof value === "string" && shoppingCategories.includes(value as ShoppingCategory);
+}
+
 export function useShoppingList() {
   const items = useShoppingListStore((s) => s.items);
   const setItems = useShoppingListStore((s) => s.setItems);
@@ -39,7 +43,7 @@ export function useShoppingList() {
         const mapped: ShoppingItem[] = apiItems.map((item) => ({
           id: item.id,
           name: item.item_name,
-          category: (item.category as ShoppingCategory) || shoppingCategories[0],
+          category: isShoppingCategory(item.category) ? item.category : shoppingCategories[0],
           checked: item.is_purchased,
           quantity: `${item.quantity}${item.unit ? " " + item.unit : ""}`,
           addedBy: "Bạn",
