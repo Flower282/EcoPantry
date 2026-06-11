@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Search, Plus, Sparkles, Clock, Users, Flame, ChefHat,
@@ -528,6 +528,47 @@ export function RecipesPage() {
 
   const toggleBookmark = async (id: number, name: string) => {
     try {
+      if (id < 0) {
+        const recipeToSave = recipes.find(r => r.id === id);
+        if (!recipeToSave) return;
+        
+        const savedRecipes = await recipesApi.add({
+          title: recipeToSave.name,
+          instructions: recipeToSave.steps.join('\n') || 'Chưa có hướng dẫn',
+          image_url: recipeToSave.image || '',
+          ingredients: recipeToSave.ingredients.length 
+            ? recipeToSave.ingredients.map(ing => ({
+                name: ing.name,
+                quantity: ing.amount || '',
+                unit: ''
+              })) 
+            : [{ name: 'Chưa thêm nguyên liệu', quantity: '', unit: '' }],
+          servings: recipeToSave.servings || '2 người',
+          time: recipeToSave.time || '30 phút',
+          difficulty: recipeToSave.difficulty || 'Trung bình',
+          calories: recipeToSave.calories || '0 kcal',
+          tags: recipeToSave.tags || [],
+          created_by_name: '',
+        });
+
+        const mapped = savedRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventoryItems));
+        setCachedSavedRecipes(savedRecipes);
+        
+        const newlyAdded = mapped.find(r => r.name === recipeToSave.name);
+        
+        setRecipes((prev) => [
+          ...mapped,
+          ...prev.filter((r) => r.category !== 'personal' && r.id !== id),
+        ]);
+        setBookmarked(new Set(mapped.map((r) => r.id)));
+        
+        if (newlyAdded) {
+          setSelectedId(newlyAdded.id);
+        }
+        toast.success(`Đã lưu "${name}" vào công thức của tôi`);
+        return;
+      }
+
       if (bookmarked.has(id)) {
         await recipesApi.delete(id);
         toast.success(`Đã bỏ lưu "${name}"`);
@@ -561,13 +602,16 @@ export function RecipesPage() {
   const handleAddToShopping = async () => {
     if (!selected) return;
     try {
-      await Promise.all(missing.map((ing) => shoppingApi.add({
-        item_name: ing.name,
-        quantity: 1,
-        unit: ing.amount,
-        category: 'Thực phẩm khô',
-        emoji: 'ðŸ›’',
-      })));
+      await Promise.all(missing.map((ing) => {
+        const parsed = parseQty(ing.amount || '');
+        return shoppingApi.add({
+          item_name: ing.name,
+          quantity: parsed?.value ?? 1,
+          unit: parsed?.unit ?? ing.amount,
+          category: 'Thực phẩm khô',
+          emoji: '🛒',
+        });
+      }));
       toast.success(`Đã thêm ${missing.length} nguyên liệu vào danh sách đi chợ`);
     } catch (err) {
       toast.error('Không thể thêm vào danh sách đi chợ: ' + (err as Error).message);
@@ -890,15 +934,13 @@ export function RecipesPage() {
                     <DifficultyBadge level={selected.difficulty} />
                   </div>
                 </div>
-                {selected.id > 0 && (
-                  <button
-                    onClick={() => toggleBookmark(selected.id, selected.name)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-white/95 backdrop-blur-sm text-slate-800 rounded-xl hover:bg-white transition-colors shadow-sm"
-                    style={{ fontSize: '0.75rem', fontWeight: 600 }}
-                  >
-                    {bookmarked.has(selected.id) ? <><BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" /> Đã lưu</> : <><Bookmark className="w-3.5 h-3.5" /> Lưu</>}
-                  </button>
-                )}
+                <button
+                  onClick={() => toggleBookmark(selected.id, selected.name)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-white/95 backdrop-blur-sm text-slate-800 rounded-xl hover:bg-white transition-colors shadow-sm"
+                  style={{ fontSize: '0.75rem', fontWeight: 600 }}
+                >
+                  {bookmarked.has(selected.id) ? <><BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" /> Đã lưu</> : <><Bookmark className="w-3.5 h-3.5" /> Lưu</>}
+                </button>
               </div>
             </div>
           </div>
