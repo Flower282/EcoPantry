@@ -65,6 +65,21 @@ export const ingredientsApi = {
   getAll: () =>
     request<{ ingredients: IngredientItem[] }>('/ingredients'),
 
+  add: (ingredient: Omit<IngredientItem, 'id' | 'addedDate' | 'expiryDate' | 'status'> | IngredientItem) =>
+    request<{ ingredient: IngredientItem }>('/ingredients', {
+      method: 'POST',
+      body: JSON.stringify({ ingredient }),
+    }),
+
+  updateOne: (id: string, ingredient: Partial<IngredientItem>) =>
+    request<{ ingredient: IngredientItem }>(`/ingredients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ingredient }),
+    }),
+
+  delete: (id: string) =>
+    request<{ id: string }>(`/ingredients/${id}`, { method: 'DELETE' }),
+
   update: (ingredients: IngredientItem[]) =>
     request<{ ingredients: IngredientItem[] }>('/ingredients/update', {
       method: 'POST',
@@ -91,6 +106,18 @@ export interface RecipeItem {
   tags?: string[];
 }
 
+export interface RecipeSuggestionItem extends Partial<RecipeItem> {
+  id?: number | string;
+  title: string;
+  matchScore: number;
+  canCook: boolean;
+  source?: string;
+  dishType?: string;
+  matchedIngredients: string[];
+  missingIngredients: string[];
+  ingredientMatches?: unknown[];
+}
+
 export const recipesApi = {
   getAll: () =>
     request<RecipeItem[]>('/recipes'),
@@ -105,6 +132,12 @@ export const recipesApi = {
     request<RecipeItem[]>('/recipes/add', {
       method: 'POST',
       body: JSON.stringify({ recipe }),
+    }),
+
+  suggest: (ingredients: Array<string | { name?: string; item_name?: string; quantity?: string; unit?: string }>, limit = 10) =>
+    request<{ ingredients: string[]; dishes: RecipeSuggestionItem[]; mealSet?: RecipeSuggestionItem[]; source?: string }>('/recipes/suggest', {
+      method: 'POST',
+      body: JSON.stringify({ ingredients, limit }),
     }),
 
   delete: (id: number) =>

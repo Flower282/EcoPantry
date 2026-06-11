@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Search, Plus, Sparkles, Clock, Users, Flame, ChefHat,
   Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, X, Heart,
   Filter, Star, ArrowRight, Wand2, Loader2,
 } from 'lucide-react';
-import { ingredientsApi, recipesApi, shoppingApi, type IngredientItem, type RecipeItem } from '@/lib/api';
+import { ingredientsApi, recipesApi, shoppingApi, type IngredientItem, type RecipeItem, type RecipeSuggestionItem } from '@/lib/api';
 import { normaliseWeight, parseQty } from '@/lib/quantity';
+import { useRecipeDataStore } from '@/stores/recipeDataStore';
 
-type Difficulty = 'Dễ' | 'Trung bình' | 'Khó';
+type Difficulty = 'Dá»…' | 'Trung bình' | 'Khó';
 type Category = 'personal' | 'community';
 
 interface Ingredient {
@@ -38,123 +39,123 @@ interface Recipe {
 const initialRecipes: Recipe[] = [
   {
     id: 1, name: 'Canh chua cá cà chua', category: 'personal', servings: '4 người', time: '30 phút',
-    difficulty: 'Dễ', calories: '320 kcal', readyPercent: 100, rating: 4.8,
+    difficulty: 'Dá»…', calories: '320 kcal', readyPercent: 100, rating: 4.8,
     image: 'https://images.unsplash.com/photo-1680084570772-1da0c78362a4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
-      { name: 'Cá hồi phi lê', amount: '400g', available: true },
+      { name: 'Cá há»“i phi lê', amount: '400g', available: true },
       { name: 'Cà chua', amount: '300g', available: true },
-      { name: 'Rau muống', amount: '200g', available: true },
+      { name: 'Rau muá»‘ng', amount: '200g', available: true },
       { name: 'Đậu bắp', amount: '100g', available: true },
-      { name: 'Nước mắm', amount: '2 thìa', available: true },
+      { name: 'Nưá»›c mắm', amount: '2 thìa', available: true },
       { name: 'Me chua', amount: '50g', available: true },
     ],
     steps: [
-      'Làm sạch cá, cắt khúc vừa ăn. Ướp với nước mắm, tiêu trong 15 phút.',
-      'Cà chua rửa sạch, cắt múi cau. Đậu bắp cắt lát. Rau muống nhặt sạch.',
-      'Đun nước sôi, cho me vào nấu tan, lọc lấy nước cốt me.',
-      'Phi thơm hành, cho cà chua vào xào đến khi mềm, đổ nước me vào.',
-      'Cho cá vào nấu đến chín, nêm nếm cho vừa miệng.',
-      'Cho đậu bắp và rau muống vào, đun thêm 2 phút rồi tắt bếp.',
+      'Làm sạch cá, cắt khúc vừa Äƒn. Ưá»›p vá»›i nưá»›c mắm, tiêu trong 15 phút.',
+      'Cà chua rửa sạch, cắt múi cau. Đậu bắp cắt lát. Rau muá»‘ng nhặt sạch.',
+      'Đun nưá»›c sôi, cho me vào nấu tan, lọc lấy nưá»›c cá»‘t me.',
+      'Phi thơm hành, cho cà chua vào xào Ä‘ến khi mềm, Ä‘á»• nưá»›c me vào.',
+      'Cho cá vào nấu Ä‘ến chín, nêm nếm cho vừa miá»‡ng.',
+      'Cho Ä‘ậu bắp và rau muá»‘ng vào, Ä‘un thêm 2 phút rá»“i tắt bếp.',
     ],
     tags: ['Canh', 'Hải sản', 'Miền Nam'],
   },
   {
-    id: 2, name: 'Thịt kho tàu', category: 'personal', servings: '4 người', time: '60 phút',
+    id: 2, name: 'Thá»‹t kho tàu', category: 'personal', servings: '4 người', time: '60 phút',
     difficulty: 'Trung bình', calories: '480 kcal', readyPercent: 100, rating: 4.9,
     image: 'https://images.unsplash.com/photo-1585116782242-a8ee668a7b9c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
-      { name: 'Thịt ba chỉ', amount: '500g', available: true },
+      { name: 'Thá»‹t ba chá»‰', amount: '500g', available: true },
       { name: 'Trứng gà', amount: '4 quả', available: true },
-      { name: 'Nước mắm', amount: '3 thìa', available: true },
+      { name: 'Nưá»›c mắm', amount: '3 thìa', available: true },
       { name: 'Đường', amount: '2 thìa', available: true },
-      { name: 'Nước dừa tươi', amount: '200ml', available: true },
+      { name: 'Nưá»›c dừa tươi', amount: '200ml', available: true },
     ],
     steps: [
-      'Thịt ba chỉ rửa sạch, cắt miếng 4x5cm. Trứng luộc chín, bóc vỏ.',
-      'Ướp thịt với nước mắm, đường, tiêu, tỏi băm trong 30 phút.',
-      'Thắng đường đến màu caramel, cho thịt vào đảo đều.',
-      'Đổ nước dừa vào, nấu sôi rồi hạ lửa nhỏ kho 40 phút.',
-      'Cho trứng vào, kho thêm 15 phút cho thấm gia vị.',
+      'Thá»‹t ba chá»‰ rửa sạch, cắt miếng 4x5cm. Trứng luá»™c chín, bóc vỏ.',
+      'Ưá»›p thá»‹t vá»›i nưá»›c mắm, Ä‘ường, tiêu, tỏi bÄƒm trong 30 phút.',
+      'Thắng Ä‘ường Ä‘ến màu caramel, cho thá»‹t vào Ä‘ảo Ä‘ều.',
+      'Đá»• nưá»›c dừa vào, nấu sôi rá»“i hạ lửa nhỏ kho 40 phút.',
+      'Cho trứng vào, kho thêm 15 phút cho thấm gia vá»‹.',
     ],
-    tags: ['Kho', 'Thịt', 'Cổ điển'],
+    tags: ['Kho', 'Thá»‹t', 'Cá»• Ä‘iá»ƒn'],
   },
   {
-    id: 3, name: 'Gà xào sả ớt', category: 'personal', servings: '3 người', time: '20 phút',
-    difficulty: 'Dễ', calories: '280 kcal', readyPercent: 60, rating: 4.5,
+    id: 3, name: 'Gà xào sả á»›t', category: 'personal', servings: '3 người', time: '20 phút',
+    difficulty: 'Dá»…', calories: '280 kcal', readyPercent: 60, rating: 4.5,
     image: 'https://images.unsplash.com/photo-1614955177711-2540ad25432b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
-      { name: 'Thịt gà tươi', amount: '600g', available: true },
-      { name: 'Ớt đỏ', amount: '2 quả', available: true },
-      { name: 'Dầu ăn', amount: '2 thìa', available: true },
+      { name: 'Thá»‹t gà tươi', amount: '600g', available: true },
+      { name: 'á»št Ä‘ỏ', amount: '2 quả', available: true },
+      { name: 'Dầu Äƒn', amount: '2 thìa', available: true },
       { name: 'Sả tươi', amount: '3 nhánh', available: false },
       { name: 'Lá chanh', amount: '5 lá', available: false },
     ],
     steps: [
-      'Thịt gà chặt miếng vừa, rửa sạch với muối, để ráo.',
-      'Sả đập dập, cắt khúc. Ớt bổ dọc. Lá chanh thái chỉ.',
-      'Phi thơm sả với dầu ăn ở lửa vừa.',
-      'Cho gà vào xào đến chín vàng, nêm gia vị.',
-      'Cho ớt và lá chanh vào, xào thêm 2 phút rồi tắt bếp.',
+      'Thá»‹t gà chặt miếng vừa, rửa sạch vá»›i muá»‘i, Ä‘á»ƒ ráo.',
+      'Sả Ä‘ập dập, cắt khúc. á»št bá»• dọc. Lá chanh thái chá»‰.',
+      'Phi thơm sả vá»›i dầu Äƒn á»Ÿ lửa vừa.',
+      'Cho gà vào xào Ä‘ến chín vàng, nêm gia vá»‹.',
+      'Cho á»›t và lá chanh vào, xào thêm 2 phút rá»“i tắt bếp.',
     ],
-    tags: ['Xào', 'Thịt gà', 'Cay'],
+    tags: ['Xào', 'Thá»‹t gà', 'Cay'],
   },
   {
-    id: 101, name: 'Bún bò Huế chuẩn vị', category: 'community', author: 'Chị Hằng - Huế', servings: '4 người', time: '120 phút',
+    id: 101, name: 'Bún bò Huế chuẩn vá»‹', category: 'community', author: 'Chá»‹ Hằng - Huế', servings: '4 người', time: '120 phút',
     difficulty: 'Khó', calories: '520 kcal', readyPercent: 45, rating: 4.9, likes: 1243,
     image: 'https://images.unsplash.com/photo-1771573754093-376c871475a6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
-      { name: 'Thịt bò bắp', amount: '400g', available: true },
-      { name: 'Nước mắm', amount: '3 thìa', available: true },
+      { name: 'Thá»‹t bò bắp', amount: '400g', available: true },
+      { name: 'Nưá»›c mắm', amount: '3 thìa', available: true },
       { name: 'Sả', amount: '4 nhánh', available: false },
-      { name: 'Mắm ruốc Huế', amount: '2 thìa', available: false },
+      { name: 'Mắm ruá»‘c Huế', amount: '2 thìa', available: false },
       { name: 'Bún bò tươi', amount: '400g', available: false },
     ],
     steps: [
-      'Ninh xương bò với hành tím nướng 2 tiếng.',
-      'Cho sả, mắm ruốc vào nước dùng, nêm nếm.',
-      'Thịt bò thái lát mỏng, chần tái với nước lèo.',
-      'Bún tươi trụng qua nước sôi, cho ra tô.',
-      'Chan nước dùng, xếp thịt, thêm rau và sa tế.',
+      'Ninh xương bò vá»›i hành tím nưá»›ng 2 tiếng.',
+      'Cho sả, mắm ruá»‘c vào nưá»›c dùng, nêm nếm.',
+      'Thá»‹t bò thái lát mỏng, chần tái vá»›i nưá»›c lèo.',
+      'Bún tươi trụng qua nưá»›c sôi, cho ra tô.',
+      'Chan nưá»›c dùng, xếp thá»‹t, thêm rau và sa tế.',
     ],
     tags: ['Bún', 'Bò', 'Đặc sản Huế'],
   },
   {
-    id: 102, name: 'Gỏi cuốn tôm thịt', category: 'community', author: 'Anh Tuấn - Sài Gòn', servings: '2 người', time: '25 phút',
-    difficulty: 'Dễ', calories: '220 kcal', readyPercent: 72, rating: 4.6, likes: 856,
+    id: 102, name: 'Gỏi cuá»‘n tôm thá»‹t', category: 'community', author: 'Anh Tuấn - Sài Gòn', servings: '2 người', time: '25 phút',
+    difficulty: 'Dá»…', calories: '220 kcal', readyPercent: 72, rating: 4.6, likes: 856,
     image: 'https://images.unsplash.com/photo-1560162071-da4c4a91077a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
       { name: 'Tôm sú', amount: '200g', available: true },
-      { name: 'Thịt ba chỉ', amount: '150g', available: true },
-      { name: 'Rau sống tổng hợp', amount: '1 bó', available: true },
+      { name: 'Thá»‹t ba chá»‰', amount: '150g', available: true },
+      { name: 'Rau sá»‘ng tá»•ng hợp', amount: '1 bó', available: true },
       { name: 'Bánh tráng', amount: '10 miếng', available: false },
       { name: 'Mắm nêm', amount: '50ml', available: false },
     ],
     steps: [
-      'Tôm luộc chín, bóc vỏ, chẻ đôi. Thịt luộc, thái lát mỏng.',
-      'Rau sống rửa sạch, để ráo.',
-      'Bánh tráng nhúng nước cho mềm.',
-      'Xếp rau, bún, thịt, tôm vào giữa rồi cuộn chặt.',
-      'Pha nước chấm mắm nêm với tỏi ớt, đường, đậu phộng.',
+      'Tôm luá»™c chín, bóc vỏ, chẻ Ä‘ôi. Thá»‹t luá»™c, thái lát mỏng.',
+      'Rau sá»‘ng rửa sạch, Ä‘á»ƒ ráo.',
+      'Bánh tráng nhúng nưá»›c cho mềm.',
+      'Xếp rau, bún, thá»‹t, tôm vào giữa rá»“i cuá»™n chặt.',
+      'Pha nưá»›c chấm mắm nêm vá»›i tỏi á»›t, Ä‘ường, Ä‘ậu phá»™ng.',
     ],
-    tags: ['Cuốn', 'Hải sản', 'Nhẹ nhàng'],
+    tags: ['Cuá»‘n', 'Hải sản', 'Nhẹ nhàng'],
   },
   {
     id: 103, name: 'Bánh xèo miền Tây', category: 'community', author: 'Bếp Mai Linh', servings: '4 người', time: '45 phút',
     difficulty: 'Trung bình', calories: '410 kcal', readyPercent: 55, rating: 4.7, likes: 632,
     image: 'https://images.unsplash.com/photo-1559847844-5315695dadae?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
-      { name: 'Bột bánh xèo', amount: '300g', available: false },
+      { name: 'Bá»™t bánh xèo', amount: '300g', available: false },
       { name: 'Tôm tươi', amount: '200g', available: true },
-      { name: 'Thịt ba chỉ', amount: '200g', available: true },
-      { name: 'Giá đỗ', amount: '300g', available: false },
-      { name: 'Nước cốt dừa', amount: '200ml', available: false },
+      { name: 'Thá»‹t ba chá»‰', amount: '200g', available: true },
+      { name: 'Giá Ä‘á»—', amount: '300g', available: false },
+      { name: 'Nưá»›c cá»‘t dừa', amount: '200ml', available: false },
     ],
     steps: [
-      'Pha bột bánh xèo với nước cốt dừa, nghệ, hành lá.',
-      'Tôm bóc vỏ, thịt thái lát. Xào sơ với hành tỏi.',
-      'Đổ bột vào chảo nóng, dàn mỏng.',
-      'Cho tôm, thịt, giá vào nửa bánh rồi gập đôi.',
-      'Ăn kèm rau sống và nước mắm chua ngọt.',
+      'Pha bá»™t bánh xèo vá»›i nưá»›c cá»‘t dừa, nghá»‡, hành lá.',
+      'Tôm bóc vỏ, thá»‹t thái lát. Xào sơ vá»›i hành tỏi.',
+      'Đá»• bá»™t vào chảo nóng, dàn mỏng.',
+      'Cho tôm, thá»‹t, giá vào nửa bánh rá»“i gập Ä‘ôi.',
+      'Ä‚n kèm rau sá»‘ng và nưá»›c mắm chua ngọt.',
     ],
     tags: ['Bánh', 'Đặc sản', 'Miền Tây'],
   },
@@ -162,7 +163,7 @@ const initialRecipes: Recipe[] = [
 
 function DifficultyBadge({ level }: { level: Difficulty }) {
   const styles = {
-    'Dễ': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    'Dá»…': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
     'Trung bình': 'bg-amber-50 text-amber-700 ring-amber-100',
     'Khó': 'bg-rose-50 text-rose-700 ring-rose-100',
   };
@@ -179,7 +180,7 @@ function normalizeText(value: string) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
+    .replace(/Ä‘/g, 'd')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -275,8 +276,8 @@ function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
     author: r.created_by_name || undefined,
     servings: r.servings || '4 người',
     time: r.time || '30 phút',
-    difficulty: (r.difficulty as Difficulty) || 'Dễ',
-    calories: r.calories || '— kcal',
+    difficulty: (r.difficulty as Difficulty) || 'Dá»…',
+    calories: r.calories || 'â€” kcal',
     readyPercent: 100,
     rating: 0,
     image: r.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
@@ -285,8 +286,41 @@ function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
       amount: `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}`,
       available: false,
     })),
-    steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
+    steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hưá»›ng dẫn'],
     tags: r.tags || [],
+  };
+}
+
+function mapSuggestionRecipe(suggestion: RecipeSuggestionItem, index: number): Recipe {
+  const ingredientMatches = Array.isArray(suggestion.ingredientMatches)
+    ? suggestion.ingredientMatches as Array<{ ingredient_name?: string; stock_name?: string | null }>
+    : [];
+  const ingredients = ingredientMatches.length > 0
+    ? ingredientMatches.map((match) => ({
+      name: match.ingredient_name || 'Nguyên liá»‡u',
+      amount: '',
+      available: Boolean(match.stock_name),
+    }))
+    : [
+      ...(suggestion.matchedIngredients || []).map((name) => ({ name, amount: '', available: true })),
+      ...(suggestion.missingIngredients || []).map((name) => ({ name, amount: '', available: false })),
+    ];
+
+  return {
+    id: -Date.now() - index,
+    name: suggestion.title,
+    category: 'community',
+    author: suggestion.source === 'food-recommendation-api' ? 'KHDL Food Recommendation' : 'EcoPantry DB',
+    servings: suggestion.servings || 'Theo công thức',
+    time: suggestion.time || 'Không rõ',
+    difficulty: (suggestion.difficulty as Difficulty) || 'Dá»…',
+    calories: suggestion.calories || 'â€” kcal',
+    readyPercent: Math.round(Number(suggestion.matchScore || 0) * 100),
+    rating: 0,
+    image: suggestion.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
+    ingredients,
+    steps: suggestion.instructions ? suggestion.instructions.split('\n').filter(Boolean) : ['Công thức Ä‘ược gợi ý từ nguyên liá»‡u hiá»‡n có.'],
+    tags: [suggestion.dishType || 'Gợi ý'].filter(Boolean),
   };
 }
 
@@ -294,7 +328,7 @@ export function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [inventoryItems, setInventoryItems] = useState<IngredientItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [category, setCategory] = useState<Category>('personal');
+  const [category, setCategory] = useState<Category>('community');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [bookmarked, setBookmarked] = useState<Set<number>>(new Set());
@@ -304,38 +338,35 @@ export function RecipesPage() {
   // Forms
   const [addOpen, setAddOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const loadRecipeData = useRecipeDataStore((state) => state.loadAll);
+  const setCachedSavedRecipes = useRecipeDataStore((state) => state.setSavedRecipes);
+  const setCachedInventoryItems = useRecipeDataStore((state) => state.setInventoryItems);
 
   // Fetch saved recipes from API and merge with local
   useEffect(() => {
     const fetchRecipes = async () => {
       setIsLoading(true);
       try {
-        const [savedResult, communityResult] = await Promise.allSettled([
-          recipesApi.getAll(),
-          recipesApi.getCommunity(),
-        ]);
-        const inventoryData = await ingredientsApi.getAll();
-        const inventory = inventoryData.ingredients || [];
-        if (savedResult.status === 'rejected') {
-          throw savedResult.reason;
-        }
+        await loadRecipeData();
+        const {
+          savedRecipes: apiRecipes,
+          communityRecipes,
+          inventoryItems: inventory,
+          error,
+        } = useRecipeDataStore.getState();
+        if (error) throw new Error(error);
 
-        const apiRecipes = savedResult.value;
-        const communityRecipes = communityResult.status === 'fulfilled' ? communityResult.value : [];
-        if (communityResult.status === 'rejected') {
-          toast.error('Không thể tải công thức cộng đồng: ' + (communityResult.reason as Error).message);
-        }
         const personalMapped: Recipe[] = apiRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventory));
         const communityMapped: Recipe[] = communityRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'community'), inventory));
         setInventoryItems(inventory);
         setRecipes([...personalMapped, ...communityMapped]);
-        setSelectedId(personalMapped[0]?.id ?? communityMapped[0]?.id ?? null);
+        setSelectedId(null);
         if (personalMapped.length === 0 && communityMapped.length > 0) {
           setCategory('community');
         }
         setBookmarked(new Set(personalMapped.map((r) => r.id)));
       } catch (err) {
-        toast.error('Không thể tải công thức: ' + (err as Error).message);
+        toast.error('Không thá»ƒ tải công thức: ' + (err as Error).message);
         setRecipes([]);
         setSelectedId(null);
         setBookmarked(new Set());
@@ -343,9 +374,9 @@ export function RecipesPage() {
       finally { setIsLoading(false); }
     };
     fetchRecipes();
-  }, []);
+  }, [loadRecipeData]);
 
-  /* ── Derived ───────────────────────────────── */
+  /* â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const visibleList = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return recipes
@@ -353,11 +384,11 @@ export function RecipesPage() {
       .filter((r) => !q || r.name.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)));
   }, [recipes, category, searchQuery]);
 
-  const selected = selectedId !== null ? recipes.find((r) => r.id === selectedId) ?? visibleList[0] : visibleList[0];
+  const selected = selectedId !== null ? recipes.find((r) => r.id === selectedId) ?? null : null;
   const missing = selected?.ingredients.filter((i) => !i.available) ?? [];
   const available = selected?.ingredients.filter((i) => i.available) ?? [];
 
-  /* ── Handlers ──────────────────────────────── */
+  /* â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const toggleBookmarkLocal = (id: number, name: string) => {
     setBookmarked((prev) => {
       const next = new Set(prev);
@@ -368,27 +399,18 @@ export function RecipesPage() {
   };
 
   const reloadRecipes = async () => {
-    const [savedResult, communityResult] = await Promise.allSettled([
-      recipesApi.getAll(),
-      recipesApi.getCommunity(),
-    ]);
-    const inventoryData = await ingredientsApi.getAll();
-    const inventory = inventoryData.ingredients || [];
-    if (savedResult.status === 'rejected') {
-      throw savedResult.reason;
-    }
-
-    const apiRecipes = savedResult.value;
-    const communityRecipes = communityResult.status === 'fulfilled' ? communityResult.value : [];
-    if (communityResult.status === 'rejected') {
-      toast.error('Không thể tải công thức cộng đồng: ' + (communityResult.reason as Error).message);
-    }
+    await loadRecipeData(true);
+    const {
+      savedRecipes: apiRecipes,
+      communityRecipes,
+      inventoryItems: inventory,
+    } = useRecipeDataStore.getState();
     const personalMapped = apiRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventory));
     const communityMapped = communityRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'community'), inventory));
     setInventoryItems(inventory);
     setRecipes([...personalMapped, ...communityMapped]);
     setBookmarked(new Set(personalMapped.map((r) => r.id)));
-    setSelectedId((current) => current ?? personalMapped[0]?.id ?? communityMapped[0]?.id ?? null);
+    setSelectedId((current) => current);
     if (personalMapped.length === 0 && communityMapped.length > 0) {
       setCategory('community');
     }
@@ -405,13 +427,15 @@ export function RecipesPage() {
       }
       await reloadRecipes();
     } catch (err) {
-      toast.error('Không thể cập nhật công thức: ' + (err as Error).message);
+      toast.error('Không thá»ƒ cập nhật công thức: ' + (err as Error).message);
     }
   };
 
   const handleSelectRecipe = async (id: number) => {
     setSelectedId(id);
     setCookingId(null);
+
+    if (id < 0) return;
 
     try {
       const detail = await recipesApi.getById(id);
@@ -420,7 +444,7 @@ export function RecipesPage() {
         recipe.id === id ? applyInventoryToRecipe(mapApiRecipe(detail, currentCategory), inventoryItems) : recipe,
       ));
     } catch (err) {
-      toast.error('Không thể tải chi tiết công thức: ' + (err as Error).message);
+      toast.error('Không thá»ƒ tải chi tiết công thức: ' + (err as Error).message);
     }
   };
 
@@ -432,11 +456,11 @@ export function RecipesPage() {
         quantity: 1,
         unit: ing.amount,
         category: 'Thực phẩm khô',
-        emoji: '🛒',
+        emoji: 'ðŸ›’',
       })));
-      toast.success(`Đã thêm ${missing.length} nguyên liệu vào danh sách đi chợ`);
+      toast.success(`Đã thêm ${missing.length} nguyên liá»‡u vào danh sách Ä‘i chợ`);
     } catch (err) {
-      toast.error('Không thể thêm vào danh sách đi chợ: ' + (err as Error).message);
+      toast.error('Không thá»ƒ thêm vào danh sách Ä‘i chợ: ' + (err as Error).message);
     }
   };
 
@@ -444,7 +468,7 @@ export function RecipesPage() {
     if (!selected) return;
     setCookingId(selected.id);
     setActiveStep(0);
-    toast.info('Bắt đầu nấu — chúc ngon miệng!');
+    toast.info('Bắt Ä‘ầu nấu â€” chúc ngon miá»‡ng!');
   };
 
   const finishCooking = async () => {
@@ -457,12 +481,13 @@ export function RecipesPage() {
       );
 
       await ingredientsApi.update(updatedInventory);
+      setCachedInventoryItems(updatedInventory);
       setInventoryItems(updatedInventory);
       setRecipes((prev) => prev.map((recipe) => applyInventoryToRecipe(recipe, updatedInventory)));
       setCookingId(null);
-      toast.success('Hoàn thành! Kho nguyên liệu đã được cập nhật.');
+      toast.success('Hoàn thành! Kho nguyên liá»‡u Ä‘ã Ä‘ược cập nhật.');
     } catch (err) {
-      toast.error('Không thể cập nhật kho sau khi nấu: ' + (err as Error).message);
+      toast.error('Không thá»ƒ cập nhật kho sau khi nấu: ' + (err as Error).message);
     }
   };
 
@@ -480,9 +505,9 @@ export function RecipesPage() {
     try {
       const savedRecipes = await recipesApi.add({
         title: data.name,
-        instructions: steps.length ? steps.join('\n') : 'Chưa có hướng dẫn',
+        instructions: steps.length ? steps.join('\n') : 'Chưa có hưá»›ng dẫn',
         image_url: data.image || '',
-        ingredients: (ingredients.length ? ingredients : [{ name: 'Chưa thêm nguyên liệu', amount: '', available: true }])
+        ingredients: (ingredients.length ? ingredients : [{ name: 'Chưa thêm nguyên liá»‡u', amount: '', available: true }])
           .map((ing) => ({ name: ing.name, quantity: ing.amount, unit: '' })),
         servings: data.servings,
         time: data.time,
@@ -493,6 +518,7 @@ export function RecipesPage() {
       });
 
       const mapped = savedRecipes.map((recipe) => applyInventoryToRecipe(mapApiRecipe(recipe, 'personal'), inventoryItems));
+      setCachedSavedRecipes(savedRecipes);
       setRecipes((prev) => [
         ...mapped,
         ...prev.filter((r) => r.category === 'community'),
@@ -503,49 +529,57 @@ export function RecipesPage() {
       setAddOpen(false);
       toast.success(`Đã tạo công thức "${data.name}"`);
     } catch (err) {
-      toast.error('Không thể tạo công thức: ' + (err as Error).message);
+      toast.error('Không thá»ƒ tạo công thức: ' + (err as Error).message);
     }
   };
 
-  const handleAISuggest = (requirements: string) => {
+  const handleAISuggest = async (_requirements: string) => {
     setAiOpen(false);
-    toast.success('AI đã gợi ý 3 công thức phù hợp với yêu cầu của bạn');
-    // Surface a representative suggestion based on requirements keyword (mock)
-    const match = recipes.find((r) =>
-      requirements.toLowerCase().split(/\s+/).some((kw) => kw && (r.name.toLowerCase().includes(kw) || r.tags.join(' ').toLowerCase().includes(kw))),
-    );
-    if (!match) return;
-    setCategory(match.category);
-    setSelectedId(match.id);
+
+    try {
+      const sourceInventory = inventoryItems.length
+        ? inventoryItems
+        : (await ingredientsApi.getAll()).ingredients || [];
+
+      if (!sourceInventory.length) {
+        toast.error('Kho nguyên liá»‡u Ä‘ang trá»‘ng, hãy thêm nguyên liá»‡u trưá»›c.');
+        return;
+      }
+
+      const result = await recipesApi.suggest(
+        sourceInventory.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+        })),
+        10,
+      );
+      const suggestedRecipes = result.dishes.map(mapSuggestionRecipe);
+
+      if (!suggestedRecipes.length) {
+        toast.info('Chưa tìm thấy món phù hợp vá»›i kho nguyên liá»‡u hiá»‡n tại.');
+        return;
+      }
+
+      setRecipes((prev) => [
+        ...suggestedRecipes,
+        ...prev.filter((recipe) => recipe.author !== 'KHDL Food Recommendation' && recipe.author !== 'EcoPantry DB'),
+      ]);
+      setCategory('community');
+      setSelectedId(suggestedRecipes[0].id);
+      const sourceLabel = result.source === 'food-recommendation-api'
+        ? 'KHDL Food Recommendation API'
+        : 'EcoPantry DB';
+      toast.success('Da goi y ' + suggestedRecipes.length + ' cong thuc tu ' + sourceLabel);
+    } catch (err) {
+      toast.error('Không thá»ƒ lấy gợi ý món Äƒn: ' + (err as Error).message);
+    }
   };
 
-  /* ── Render ────────────────────────────────── */
-  if (!selected) {
-    return (
-      <div className="h-full bg-slate-50 flex items-center justify-center p-8">
-        <div className="bg-white border border-slate-100 rounded-2xl p-8 text-center max-w-md shadow-sm">
-          <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-900" style={{ fontSize: '1rem', fontWeight: 700 }}>Chưa có công thức</p>
-          <p className="text-slate-500 mt-1" style={{ fontSize: '0.82rem' }}>
-            Thêm công thức mới hoặc lưu công thức cộng đồng để bắt đầu.
-          </p>
-          <button
-            onClick={() => setAddOpen(true)}
-            className="mt-5 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
-            style={{ fontSize: '0.82rem', fontWeight: 600 }}
-          >
-            <Plus className="w-4 h-4" /> Thêm công thức
-          </button>
-        </div>
-        {addOpen && <AddRecipeForm onClose={() => setAddOpen(false)} onSubmit={handleCreateRecipe} />}
-      </div>
-    );
-  }
-
-
+  /* â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   return (
     <div className="flex h-full overflow-hidden bg-slate-50">
-      {/* ── LEFT: Master list (30%) ────────────── */}
+      {/* â”€â”€ LEFT: Master list (30%) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="w-[30%] min-w-[300px] max-w-[420px] border-r border-slate-200 bg-white flex flex-col shrink-0">
         {/* Header: search + tabs + filter */}
         <div className="px-4 py-4 border-b border-slate-100 space-y-3">
@@ -620,7 +654,7 @@ export function RecipesPage() {
             </div>
           ) : (
             visibleList.map((r) => {
-              const isSelected = selected.id === r.id;
+              const isSelected = selected?.id === r.id;
               return (
                 <button
                   key={r.id}
@@ -670,9 +704,21 @@ export function RecipesPage() {
         </div>
       </div>
 
-      {/* ── RIGHT: Detail (70%) ───────────────── */}
+      {/* â”€â”€ RIGHT: Detail (70%) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6 lg:p-8 space-y-6">
+          {!selected ? (
+            <div className="min-h-[60vh] flex items-center justify-center">
+              <div className="bg-white border border-slate-100 rounded-2xl p-8 text-center max-w-md shadow-sm">
+                <ChefHat className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-900" style={{ fontSize: '1rem', fontWeight: 700 }}>Chọn một công thức</p>
+                <p className="text-slate-500 mt-1" style={{ fontSize: '0.82rem' }}>
+                  Chọn món trong danh sách bên trái hoặc bấm AI gợi ý công thức để lấy món từ kho nguyên liệu.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
 
           {/* Hero */}
           <div className="relative h-64 rounded-2xl overflow-hidden bg-slate-200 shadow-sm">
@@ -686,7 +732,7 @@ export function RecipesPage() {
               </span>
               {selected.author && (
                 <span className="px-2.5 py-1 bg-white/90 backdrop-blur text-slate-700 rounded-full" style={{ fontSize: '0.68rem', fontWeight: 500 }}>
-                  bởi {selected.author}
+                  bá»Ÿi {selected.author}
                 </span>
               )}
             </div>
@@ -715,13 +761,15 @@ export function RecipesPage() {
                     <DifficultyBadge level={selected.difficulty} />
                   </div>
                 </div>
-                <button
-                  onClick={() => toggleBookmark(selected.id, selected.name)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-white/95 backdrop-blur-sm text-slate-800 rounded-xl hover:bg-white transition-colors shadow-sm"
-                  style={{ fontSize: '0.75rem', fontWeight: 600 }}
-                >
-                  {bookmarked.has(selected.id) ? <><BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" /> Đã lưu</> : <><Bookmark className="w-3.5 h-3.5" /> Lưu</>}
-                </button>
+                {selected.id > 0 && (
+                  <button
+                    onClick={() => toggleBookmark(selected.id, selected.name)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-white/95 backdrop-blur-sm text-slate-800 rounded-xl hover:bg-white transition-colors shadow-sm"
+                    style={{ fontSize: '0.75rem', fontWeight: 600 }}
+                  >
+                    {bookmarked.has(selected.id) ? <><BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" /> Đã lưu</> : <><Bookmark className="w-3.5 h-3.5" /> Lưu</>}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -831,7 +879,7 @@ export function RecipesPage() {
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
                       isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-600 text-white'
                     }`} style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-                      {isDone ? '✓' : i + 1}
+                      {isDone ? 'âœ“' : i + 1}
                     </div>
                     <p className={`pt-0.5 ${isDone ? 'text-slate-400 line-through' : 'text-slate-700'}`} style={{ fontSize: '0.82rem', lineHeight: 1.6 }}>
                       {step}
@@ -871,6 +919,8 @@ export function RecipesPage() {
               )}
             </div>
           </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -881,9 +931,9 @@ export function RecipesPage() {
   );
 }
 
-/* ─────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Sub-component: AddRecipeForm
-───────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 interface NewRecipeData {
   name: string;
   servings: string;
@@ -899,7 +949,7 @@ interface NewRecipeData {
 function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: NewRecipeData) => void }) {
   const [form, setForm] = useState<NewRecipeData>({
     name: '', servings: '4 người', time: '30 phút',
-    difficulty: 'Dễ', calories: '', image: '', tags: '',
+    difficulty: 'Dá»…', calories: '', image: '', tags: '',
     ingredients: '', steps: '',
   });
 
@@ -929,7 +979,7 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
               type="text"
               value={form.name}
               onChange={(e) => update('name', e.target.value)}
-              placeholder="VD: Cá kho tộ"
+              placeholder="VD: Cá kho tá»™"
               className="form-input"
             />
           </Field>
@@ -946,7 +996,7 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Độ khó">
               <select value={form.difficulty} onChange={(e) => update('difficulty', e.target.value as Difficulty)} className="form-input">
-                <option value="Dễ">Dễ</option>
+                <option value="Dá»…">Dá»…</option>
                 <option value="Trung bình">Trung bình</option>
                 <option value="Khó">Khó</option>
               </select>
@@ -979,7 +1029,7 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
               value={form.steps}
               onChange={(e) => update('steps', e.target.value)}
               rows={5}
-              placeholder={'Sơ chế cá, ướp gia vị 15 phút\nPhi thơm hành tỏi\n...'}
+              placeholder={'Sơ chế cá, ưá»›p gia vá»‹ 15 phút\nPhi thơm hành tỏi\n...'}
               className="form-input"
             />
           </Field>
@@ -1017,9 +1067,9 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
   );
 }
 
-/* ─────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Sub-component: AISuggestionForm
-───────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function AISuggestionForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (requirements: string) => void }) {
   const [requirements, setRequirements] = useState('');
   const [loading, setLoading] = useState(false);

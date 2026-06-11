@@ -131,38 +131,68 @@ export function InventoryPage() {
     setOpenMenu(null);
   };
 
+  const isMissingIngredientError = (error: unknown) => {
+    const message = (error as Error).message || '';
+    return message.includes('404') || message.includes('No such ingredient');
+  };
+
   const handleSave = async () => {
     if (!form.name.trim() || !form.quantity.trim()) {
       toast.error('Vui lòng nhập tên và số lượng');
       return;
     }
-    const status = computeStatus(form.daysLeft);
-    let newItems: IngredientItem[];
-    if (editItem) {
-      newItems = items.map(i => i.id === editItem.id ? { ...i, ...form, status } : i);
-      toast.success(`Đã cập nhật "${form.name}"`);
-    } else {
-      const newItem: IngredientItem = {
-        id: `item_${Date.now()}`,
-        ...form,
-        status,
-        expiryDate: new Date(Date.now() + form.daysLeft * 86400000).toLocaleDateString('vi-VN'),
-        addedDate: new Date().toLocaleDateString('vi-VN'),
-      };
-      newItems = [newItem, ...items];
-      toast.success(`Đã thêm "${form.name}" vào ${storageAreas.find(s => s.id === form.storage)!.label}`);
+
+    setIsSaving(true);
+    try {
+      if (editItem) {
+        const optimistic = { ...editItem, ...form, status: computeStatus(form.daysLeft) };
+        let newItems: IngredientItem[];
+        try {
+          const result = await ingredientsApi.updateOne(editItem.id, form);
+          const updated = { ...result.ingredient, status: computeStatus(result.ingredient.daysLeft) };
+          newItems = items.map(i => i.id === editItem.id ? updated : i);
+        } catch (err) {
+          if (!isMissingIngredientError(err)) throw err;
+          newItems = items.map(i => i.id === editItem.id ? optimistic : i);
+          const result = await ingredientsApi.update(newItems);
+          newItems = (result.ingredients || newItems).map((item) => ({ ...item, status: computeStatus(item.daysLeft) }));
+        }
+        setItems(newItems);
+        toast.success(`Đã cập nhật "${form.name}"`);
+      } else {
+        const result = await ingredientsApi.add(form);
+        const created = { ...result.ingredient, status: computeStatus(result.ingredient.daysLeft) };
+        setItems([created, ...items]);
+        toast.success(`Đã thêm "${form.name}" vào ${storageAreas.find(s => s.id === form.storage)!.label}`);
+      }
+      setAddOpen(false);
+      setEditItem(null);
+    } catch (err) {
+      toast.error('Lưu thất bại: ' + (err as Error).message);
+    } finally {
+      setIsSaving(false);
     }
-    setItems(newItems);
-    setAddOpen(false);
-    await persistItems(newItems);
   };
 
   const handleDelete = async (id: string, name: string) => {
-    const newItems = items.filter(i => i.id !== id);
-    setItems(newItems);
-    setOpenMenu(null);
-    toast.success(`Đã xoá "${name}"`);
-    await persistItems(newItems);
+    setIsSaving(true);
+    try {
+      let newItems = items.filter(i => i.id !== id);
+      try {
+        await ingredientsApi.delete(id);
+      } catch (err) {
+        if (!isMissingIngredientError(err)) throw err;
+        const result = await ingredientsApi.update(newItems);
+        newItems = (result.ingredients || newItems).map((item) => ({ ...item, status: computeStatus(item.daysLeft) }));
+      }
+      setItems(newItems);
+      setOpenMenu(null);
+      toast.success(`Đã xoá "${name}"`);
+    } catch (err) {
+      toast.error('Xoá thất bại: ' + (err as Error).message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) {

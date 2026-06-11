@@ -3,8 +3,14 @@ require("dotenv").config();
 
 const isProduction = ["production", "prod"].includes(process.env.NODE_ENV);
 
+const getEnvValue = (key) => {
+  const value = process.env[key]?.trim();
+  if (!value || /^<.*>$/.test(value)) return null;
+  return value;
+};
+
 const getDbCaFromEnv = () => {
-  const base64 = process.env.DB_CA_BASE64;
+  const base64 = getEnvValue("DB_CA_BASE64");
   if (!base64) return null;
 
   const normalized = base64.replace(/\s+/g, "");
@@ -34,6 +40,7 @@ const parseDbUrl = (dbUrl) => {
 };
 
 const shouldUseSsl = isProduction || Boolean(dbCa);
+const dbUrl = getEnvValue("DB_URL");
 
 const commonOptions = {
   dialect: "postgres",
@@ -56,9 +63,9 @@ const commonOptions = {
     : {},
 };
 
-const sequelize = process.env.DB_URL
+const sequelize = dbUrl
   ? (() => {
-      const parsed = parseDbUrl(process.env.DB_URL);
+      const parsed = parseDbUrl(dbUrl);
       return new Sequelize(parsed.database, parsed.user, parsed.password, {
         ...commonOptions,
         host: parsed.host,

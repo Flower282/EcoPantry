@@ -12,7 +12,9 @@ import { LoginPage } from './LoginPage';
 import { SettingsModal } from '@/components/SettingsModal';
 import { RecipesPage } from '@/pages/RecipesPage';
 import { ShoppingPage } from './ShoppingPage';
-import { groupsApi, ingredientsApi, shoppingApi, type FamilyGroup } from '@/lib/api';
+import type { FamilyGroup } from '@/lib/api';
+import { useRecipeDataStore } from '@/stores/recipeDataStore';
+import { useAppDataStore } from '@/stores/appDataStore';
 
 const navItems: { id: TabType; label: string; icon: ElementType; badge?: number }[] = [
   { id: 'home',      label: 'Trang chủ',     icon: Home },
@@ -65,6 +67,11 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [familyGroup, setFamilyGroup] = useState<FamilyGroup | null>(null);
   const [navBadges, setNavBadges] = useState<Partial<Record<TabType, number>>>({});
+  const preloadRecipeData = useRecipeDataStore((state) => state.loadAll);
+  const preloadAppData = useAppDataStore((state) => state.loadAll);
+  const cachedInventoryItems = useRecipeDataStore((state) => state.inventoryItems);
+  const cachedShoppingItems = useAppDataStore((state) => state.shoppingItems);
+  const cachedFamilyGroup = useAppDataStore((state) => state.familyGroup);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -86,75 +93,52 @@ export default function App() {
   }));
 
   useEffect(() => {
-    const loadNotifications = async () => {
-      if (!user) return;
-
-      try {
-        const data = await ingredientsApi.getAll();
-        const dynamic = (data.ingredients || [])
-          .filter((item) => item.daysLeft <= 3)
-          .slice(0, 6)
-          .map((item, index) => ({
-            id: index + 1,
-            title: item.daysLeft < 0
-              ? `${item.name} đã hết hạn`
-              : item.daysLeft === 0
-                ? `${item.name} hết hạn hôm nay`
-                : `${item.name} sắp hết hạn`,
-            desc: item.daysLeft < 0
-              ? `Quá hạn ${Math.abs(item.daysLeft)} ngày, nên kiểm tra và xử lý`
-              : `Còn ${item.daysLeft} ngày, ưu tiên dùng trong bữa gần nhất`,
-            time: 'Từ kho thực phẩm',
-            unread: true,
-          }));
-
-        setNotificationItems(dynamic);
-        setUnreadCount(dynamic.filter((n) => n.unread).length);
-      } catch {
-        setNotificationItems([]);
-        setUnreadCount(0);
-      }
-    };
-
-    loadNotifications();
-  }, [user]);
+    if (!user) return;
+    Promise.allSettled([
+      preloadRecipeData(),
+      preloadAppData(),
+    ]).catch(() => {
+      // Individual pages still show their own load errors if opened.
+    });
+  }, [user, preloadRecipeData, preloadAppData]);
 
   useEffect(() => {
-    const loadFamilyGroup = async () => {
-      if (!user) return;
+    if (!user) return;
 
-      try {
-        const data = await groupsApi.current();
-        setFamilyGroup(data.group);
-      } catch {
-        setFamilyGroup(null);
-      }
-    };
+    const dynamic = cachedInventoryItems
+      .filter((item) => item.daysLeft <= 3)
+      .slice(0, 6)
+      .map((item, index) => ({
+        id: index + 1,
+        title: item.daysLeft < 0
+          ? `${item.name} đã hết hạn`
+          : item.daysLeft === 0
+            ? `${item.name} hết hạn hôm nay`
+            : `${item.name} sắp hết hạn`,
+        desc: item.daysLeft < 0
+          ? `Quá hạn ${Math.abs(item.daysLeft)} ngày, nên kiểm tra và xử lý`
+          : `Còn ${item.daysLeft} ngày, ưu tiên dùng trong bữa gần nhất`,
+        time: 'Từ kho thực phẩm',
+        unread: true,
+      }));
 
-    loadFamilyGroup();
-  }, [user, settingsOpen]);
+    setNotificationItems(dynamic);
+    setUnreadCount(dynamic.filter((n) => n.unread).length);
+  }, [user, cachedInventoryItems]);
 
   useEffect(() => {
-    const loadNavBadges = async () => {
-      if (!user) return;
+    if (!user) return;
+    setFamilyGroup(cachedFamilyGroup);
+  }, [user, cachedFamilyGroup, settingsOpen]);
 
-      try {
-        const [inventoryData, shoppingItems] = await Promise.all([
-          ingredientsApi.getAll(),
-          shoppingApi.getAll(),
-        ]);
+  useEffect(() => {
+    if (!user) return;
 
-        setNavBadges({
-          inventory: inventoryData.ingredients?.length || 0,
-          shopping: shoppingItems.filter((item) => !item.is_purchased).length,
-        });
-      } catch {
-        setNavBadges({});
-      }
-    };
-
-    loadNavBadges();
-  }, [user, activeTab]);
+    setNavBadges({
+      inventory: cachedInventoryItems.length,
+      shopping: cachedShoppingItems.filter((item) => !item.is_purchased).length,
+    });
+  }, [user, cachedInventoryItems, cachedShoppingItems]);
 
   if (!user) return <LoginPage />;
 

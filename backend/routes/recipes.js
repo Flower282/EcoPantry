@@ -5,6 +5,7 @@ const {
   getRecipe,
   addRecipe,
   saveRecipe,
+  suggestRecipes,
   generateRecipes,
   deleteRecipe,
   checkSavedStatus,
@@ -27,6 +28,9 @@ router.get("/:id", getRecipe);
 
 // POST recipe
 router.post("/add", addRecipe);
+
+// POST suggest recipes from available ingredients
+router.post("/suggest", suggestRecipes);
 
 // POST like for recipe
 router.post("/save", saveRecipe);
