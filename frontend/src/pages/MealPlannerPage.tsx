@@ -579,13 +579,7 @@ export function MealPlannerPage() {
               ))}
             </div>
 
-            <button
-              onClick={generateAIPlan}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all"
-              style={{ fontSize: '0.78rem', fontWeight: 600 }}
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Lên kế hoạch bằng AI
-            </button>
+
 
             <button
               onClick={clearWeek}

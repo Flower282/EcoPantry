@@ -106,7 +106,7 @@ export interface RecipeItem {
   tags?: string[];
 }
 
-export interface RecipeSuggestionItem extends Partial<RecipeItem> {
+export interface RecipeSuggestionItem extends Omit<Partial<RecipeItem>, 'id'> {
   id?: number | string;
   title: string;
   matchScore: number;

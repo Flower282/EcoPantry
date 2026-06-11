@@ -1,9 +1,30 @@
 export type ParsedQuantity = { value: number; unit: string };
 
 export function parseQty(s: string): ParsedQuantity | null {
-  const m = s.trim().match(/^([\d.,]+)\s*([a-zA-ZÀ-ỹ%]+.*)?$/);
+  const m = s.trim().match(/^([\d.,]+(?:[\s\/][\d.,]+)*)\s*([a-zA-ZÀ-ỹ%]+.*)?$/);
   if (!m) return null;
-  const value = parseFloat(m[1].replace(",", "."));
+  
+  let numStr = m[1].trim();
+  let value = 0;
+  
+  if (numStr.includes('/')) {
+    const parts = numStr.split(/\s+/);
+    for (const part of parts) {
+      if (part.includes('/')) {
+        const [n, d] = part.split('/');
+        const num = parseFloat(n.replace(',', '.'));
+        const den = parseFloat(d.replace(',', '.'));
+        if (den === 0 || Number.isNaN(num) || Number.isNaN(den)) return null;
+        value += num / den;
+      } else {
+        const num = parseFloat(part.replace(',', '.'));
+        if (!Number.isNaN(num)) value += num;
+      }
+    }
+  } else {
+    value = parseFloat(numStr.replace(',', '.'));
+  }
+  
   if (Number.isNaN(value)) return null;
   const unit = (m[2] || "").trim().toLowerCase();
   return { value, unit };
