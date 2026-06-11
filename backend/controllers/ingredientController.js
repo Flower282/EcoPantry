@@ -99,6 +99,8 @@ const getIngredients = async (req, res) => {
           legacyIngredients.map((ingredient) => toFridgeItem(ingredient, group_id, req.user.id)),
           { returning: true },
         );
+        user.ingredients = [];
+        await user.save();
       }
     }
 
@@ -120,6 +122,8 @@ const addIngredient = async (req, res) => {
     }
 
     const created = await FridgeItem.create(toFridgeItem(ingredient, group_id, user_uuid));
+    await User.update({ ingredients: [] }, { where: { id: user_uuid } });
+
     res.status(201).json({ ingredient: toIngredient(created) });
   } catch (error) {
     console.error("Error adding ingredient:", error);
@@ -141,6 +145,8 @@ const updateIngredient = async (req, res) => {
     }
 
     await item.update(toFridgeItem(ingredient, group_id, req.user.id));
+    await User.update({ ingredients: [] }, { where: { id: req.user.id } });
+
     res.status(200).json({ ingredient: toIngredient(item) });
   } catch (error) {
     console.error("Error updating ingredient:", error);
@@ -157,6 +163,8 @@ const deleteIngredient = async (req, res) => {
     }
 
     await item.destroy();
+    await User.update({ ingredients: [] }, { where: { id: req.user.id } });
+
     res.status(200).json({ id: String(req.params.id) });
   } catch (error) {
     console.error("Error deleting ingredient:", error);
@@ -179,6 +187,8 @@ const updateIngredients = async (req, res) => {
       ingredients.map((ingredient) => toFridgeItem(ingredient, group_id, user_uuid)),
       { returning: true },
     );
+
+    await User.update({ ingredients: [] }, { where: { id: user_uuid } });
 
     res.status(200).json({ ingredients: created.map(toIngredient) });
   } catch (error) {
@@ -216,7 +226,7 @@ const generateIngredients = async (req, res) => {
     //       content: [
     //         {
     //           type: "text",
-    //           text: `This is an image of a fridge, cupboard, or pantry. Please list the ingredients you see...`,
+    //           text: This is an image of a fridge, cupboard, or pantry. Please list the ingredients you see...,
     //         },
     //         {
     //           type: "image_url",

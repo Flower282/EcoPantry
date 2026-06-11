@@ -106,13 +106,19 @@ function mapExternalDish(dish) {
     matchScore: Number(dish.score || 0),
     canCook: Number(dish.missing_required || 0) === 0,
     dishType: dish.dish_type || "",
+    instructions: Array.isArray(dish.instructions)
+      ? dish.instructions.join("\n")
+      : String(dish.instructions || "").trim(),
+    time: dish.time || "",
+    servings: dish.servings || "",
+    difficulty: dish.difficulty || "",
     matchedIngredients,
     missingIngredients,
     ingredientMatches,
   };
 }
 
-async function suggestRecipesFromFoodApi(rawIngredients, limit) {
+async function suggestRecipesFromFoodApi(rawIngredients, limit, filters = {}) {
   const baseUrl = process.env.FOOD_RECOMMENDATION_API_URL.replace(/\/+$/, "");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -140,6 +146,9 @@ async function suggestRecipesFromFoodApi(rawIngredients, limit) {
         ingredients,
         top_k: limit,
         max_dishes: Math.min(limit, 3),
+        dish_type_filter: filters.dish_type_filter,
+        required_types: filters.required_types,
+        max_minutes: filters.max_minutes,
       }),
       signal: controller.signal,
     });
@@ -239,11 +248,30 @@ const suggestRecipes = async (req, res) => {
     }
 
     const limit = Math.min(Math.max(Number(req.body.limit) || 10, 1), 50);
+    const foodApiFilters = {
+      dish_type_filter:
+        typeof req.body.dish_type_filter === "string" && req.body.dish_type_filter.trim()
+          ? req.body.dish_type_filter.trim()
+          : undefined,
+      required_types: Array.isArray(req.body.required_types)
+        ? req.body.required_types
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        : undefined,
+      max_minutes:
+        Number.isFinite(Number(req.body.max_minutes)) && Number(req.body.max_minutes) > 0
+          ? Number(req.body.max_minutes)
+          : undefined,
+    };
     console.log(`POST /recipes/suggest received ${availableIngredients.length} ingredients`);
 
     if (shouldUseFoodRecommendationApi()) {
       try {
-        const externalSuggestions = await suggestRecipesFromFoodApi(rawIngredients, limit);
+        const externalSuggestions = await suggestRecipesFromFoodApi(
+          rawIngredients,
+          limit,
+          foodApiFilters,
+        );
         return res.status(200).json(externalSuggestions);
       } catch (externalError) {
         console.warn(

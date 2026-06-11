@@ -9,7 +9,7 @@ import { ingredientsApi, recipesApi, shoppingApi, type IngredientItem, type Reci
 import { normaliseWeight, parseQty } from '@/lib/quantity';
 import { useRecipeDataStore } from '@/stores/recipeDataStore';
 
-type Difficulty = 'Dá»…' | 'Trung bình' | 'Khó';
+type Difficulty = 'Dễ' | 'Trung bình' | 'Khó';
 type Category = 'personal' | 'community';
 
 interface Ingredient {
@@ -39,7 +39,7 @@ interface Recipe {
 const initialRecipes: Recipe[] = [
   {
     id: 1, name: 'Canh chua cá cà chua', category: 'personal', servings: '4 người', time: '30 phút',
-    difficulty: 'Dá»…', calories: '320 kcal', readyPercent: 100, rating: 4.8,
+    difficulty: 'Dễ', calories: '320 kcal', readyPercent: 100, rating: 4.8,
     image: 'https://images.unsplash.com/photo-1680084570772-1da0c78362a4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
       { name: 'Cá há»“i phi lê', amount: '400g', available: true },
@@ -81,7 +81,7 @@ const initialRecipes: Recipe[] = [
   },
   {
     id: 3, name: 'Gà xào sả á»›t', category: 'personal', servings: '3 người', time: '20 phút',
-    difficulty: 'Dá»…', calories: '280 kcal', readyPercent: 60, rating: 4.5,
+    difficulty: 'Dễ', calories: '280 kcal', readyPercent: 60, rating: 4.5,
     image: 'https://images.unsplash.com/photo-1614955177711-2540ad25432b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
       { name: 'Thá»‹t gà tươi', amount: '600g', available: true },
@@ -121,7 +121,7 @@ const initialRecipes: Recipe[] = [
   },
   {
     id: 102, name: 'Gỏi cuá»‘n tôm thá»‹t', category: 'community', author: 'Anh Tuấn - Sài Gòn', servings: '2 người', time: '25 phút',
-    difficulty: 'Dá»…', calories: '220 kcal', readyPercent: 72, rating: 4.6, likes: 856,
+    difficulty: 'Dễ', calories: '220 kcal', readyPercent: 72, rating: 4.6, likes: 856,
     image: 'https://images.unsplash.com/photo-1560162071-da4c4a91077a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients: [
       { name: 'Tôm sú', amount: '200g', available: true },
@@ -163,7 +163,7 @@ const initialRecipes: Recipe[] = [
 
 function DifficultyBadge({ level }: { level: Difficulty }) {
   const styles = {
-    'Dá»…': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    'Dễ': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
     'Trung bình': 'bg-amber-50 text-amber-700 ring-amber-100',
     'Khó': 'bg-rose-50 text-rose-700 ring-rose-100',
   };
@@ -268,6 +268,13 @@ function deductIngredientFromInventory(ingredient: Ingredient, inventoryItems: I
     .filter((item) => Number(item.quantity) > 0);
 }
 
+function normalizeDifficulty(value?: string | null): Difficulty {
+  const normalized = normalizeText(value || '');
+  if (normalized === 'kho') return 'Khó';
+  if (normalized.includes('trung binh')) return 'Trung bình';
+  return 'Dễ';
+}
+
 function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
   return {
     id: r.id,
@@ -276,8 +283,8 @@ function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
     author: r.created_by_name || undefined,
     servings: r.servings || '4 người',
     time: r.time || '30 phút',
-    difficulty: (r.difficulty as Difficulty) || 'Dá»…',
-    calories: r.calories || 'â€” kcal',
+    difficulty: normalizeDifficulty(r.difficulty),
+    calories: r.calories || '— kcal',
     readyPercent: 100,
     rating: 0,
     image: r.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
@@ -286,19 +293,54 @@ function mapApiRecipe(r: RecipeItem, category: Category = 'personal'): Recipe {
       amount: `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}`,
       available: false,
     })),
-    steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hưá»›ng dẫn'],
+    steps: r.instructions ? r.instructions.split('\n').filter(Boolean) : ['Chưa có hướng dẫn'],
     tags: r.tags || [],
   };
 }
 
+function buildSuggestionSteps(suggestion: RecipeSuggestionItem) {
+  const matchedIngredients = suggestion.matchedIngredients || [];
+  const missingIngredients = suggestion.missingIngredients || [];
+  const dishType = suggestion.dishType || 'món ăn';
+
+  const steps = [
+    matchedIngredients.length
+      ? `Chuẩn bị các nguyên liệu đang có: ${matchedIngredients.join(', ')}.`
+      : 'Chuẩn bị các nguyên liệu hiện có trong kho.',
+  ];
+
+  if (missingIngredients.length) {
+    steps.push(`Nếu muốn nấu đầy đủ, cần bổ sung thêm: ${missingIngredients.join(', ')}.`);
+  }
+
+  steps.push(`Sơ chế nguyên liệu và chia theo nhóm chính, rồi bắt đầu chế biến theo kiểu ${dishType}.`);
+
+  if (normalizeText(dishType).includes('canh') || normalizeText(dishType).includes('mon nuoc')) {
+    steps.push('Đun nước hoặc nước dùng, cho nguyên liệu chính vào trước, sau đó thêm rau và gia vị ở cuối để giữ vị tươi.');
+  } else if (normalizeText(dishType).includes('xao')) {
+    steps.push('Làm nóng chảo, phi thơm gia vị, xào nguyên liệu chính trước rồi thêm rau củ và nêm nếm vừa ăn.');
+  } else if (normalizeText(dishType).includes('kho')) {
+    steps.push('Ướp nguyên liệu với gia vị, đun lửa vừa cho sôi rồi hạ nhỏ lửa để món thấm đều.');
+  } else {
+    steps.push('Chế biến món theo khẩu vị gia đình, ưu tiên nấu chín nguyên liệu chính trước rồi hoàn thiện với gia vị.');
+  }
+
+  steps.push('Nêm nếm lại lần cuối, trình bày ra đĩa hoặc tô và dùng nóng.');
+  return steps;
+}
+
 function mapSuggestionRecipe(suggestion: RecipeSuggestionItem, index: number): Recipe {
   const ingredientMatches = Array.isArray(suggestion.ingredientMatches)
-    ? suggestion.ingredientMatches as Array<{ ingredient_name?: string; stock_name?: string | null }>
+    ? suggestion.ingredientMatches as Array<{
+      ingredient_name?: string;
+      ingredient_quantity?: string | null;
+      stock_name?: string | null;
+    }>
     : [];
   const ingredients = ingredientMatches.length > 0
     ? ingredientMatches.map((match) => ({
-      name: match.ingredient_name || 'Nguyên liá»‡u',
-      amount: '',
+      name: match.ingredient_name || 'Nguyên liệu',
+      amount: match.ingredient_quantity ? String(match.ingredient_quantity) : '',
       available: Boolean(match.stock_name),
     }))
     : [
@@ -313,15 +355,83 @@ function mapSuggestionRecipe(suggestion: RecipeSuggestionItem, index: number): R
     author: suggestion.source === 'food-recommendation-api' ? 'KHDL Food Recommendation' : 'EcoPantry DB',
     servings: suggestion.servings || 'Theo công thức',
     time: suggestion.time || 'Không rõ',
-    difficulty: (suggestion.difficulty as Difficulty) || 'Dá»…',
-    calories: suggestion.calories || 'â€” kcal',
+    difficulty: normalizeDifficulty(suggestion.difficulty),
+    calories: suggestion.calories || '— kcal',
     readyPercent: Math.round(Number(suggestion.matchScore || 0) * 100),
     rating: 0,
     image: suggestion.image_url || 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
     ingredients,
-    steps: suggestion.instructions ? suggestion.instructions.split('\n').filter(Boolean) : ['Công thức Ä‘ược gợi ý từ nguyên liá»‡u hiá»‡n có.'],
+    steps: suggestion.instructions
+      ? suggestion.instructions.split('\n').filter(Boolean)
+      : buildSuggestionSteps(suggestion),
     tags: [suggestion.dishType || 'Gợi ý'].filter(Boolean),
   };
+}
+
+function extractMaxMinutes(requirements: string) {
+  const normalized = normalizeText(requirements);
+  const hourMatch = normalized.match(/(\d+)\s*(gio|g|tieng)/);
+  if (hourMatch) return Number(hourMatch[1]) * 60;
+
+  const minuteMatch = normalized.match(/(\d+)\s*(phut|p)\b/);
+  if (minuteMatch) return Number(minuteMatch[1]);
+
+  if (
+    normalized.includes('nhanh')
+    || normalized.includes('gap')
+    || normalized.includes('don gian')
+    || normalized.includes('it thoi gian')
+    || normalized.includes('nhanh gon')
+  ) {
+    return 30;
+  }
+
+  return undefined;
+}
+
+function parsePromptFilters(requirements: string) {
+  const normalized = normalizeText(requirements);
+  const requiredTypes = new Set<string>();
+
+  const dishTypeMatchers: Array<{ keywords: string[]; value: string }> = [
+    { keywords: ['mon chay', 'chay'], value: 'mon chay' },
+    { keywords: ['canh', 'sup'], value: 'canh' },
+    { keywords: ['xao'], value: 'xao' },
+    { keywords: ['chien', 'ran'], value: 'chien' },
+    { keywords: ['kho'], value: 'kho' },
+    { keywords: ['nuong'], value: 'nuong' },
+    { keywords: ['hap'], value: 'hap' },
+    { keywords: ['lau'], value: 'lau' },
+    { keywords: ['bun', 'pho', 'hu tieu', 'mi nuoc', 'mon nuoc'], value: 'mon nuoc' },
+    { keywords: ['salad', 'goi'], value: 'salad' },
+  ];
+
+  let dishTypeFilter: string | undefined;
+  for (const matcher of dishTypeMatchers) {
+    if (matcher.keywords.some((keyword) => normalized.includes(keyword))) {
+      dishTypeFilter = matcher.value;
+      requiredTypes.add(matcher.value);
+      break;
+    }
+  }
+
+  if (normalized.includes('bua toi')) requiredTypes.add('mon man');
+  if (normalized.includes('bua sang')) requiredTypes.add('mon nuoc');
+  if (normalized.includes('an nhe') || normalized.includes('nhe nhang') || normalized.includes('it calo')) {
+    if (!dishTypeFilter) dishTypeFilter = 'salad';
+  }
+
+  return {
+    requirements,
+    dishTypeFilter,
+    requiredTypes: requiredTypes.size ? Array.from(requiredTypes) : undefined,
+    maxMinutes: extractMaxMinutes(requirements),
+  };
+}
+
+interface AISuggestionPayload {
+  requirements: string;
+  selectedIngredients: IngredientItem[];
 }
 
 export function RecipesPage() {
@@ -347,7 +457,7 @@ export function RecipesPage() {
     const fetchRecipes = async () => {
       setIsLoading(true);
       try {
-        await loadRecipeData();
+        await loadRecipeData(true);
         const {
           savedRecipes: apiRecipes,
           communityRecipes,
@@ -366,7 +476,7 @@ export function RecipesPage() {
         }
         setBookmarked(new Set(personalMapped.map((r) => r.id)));
       } catch (err) {
-        toast.error('Không thá»ƒ tải công thức: ' + (err as Error).message);
+        toast.error('Không thể tải công thức: ' + (err as Error).message);
         setRecipes([]);
         setSelectedId(null);
         setBookmarked(new Set());
@@ -427,7 +537,7 @@ export function RecipesPage() {
       }
       await reloadRecipes();
     } catch (err) {
-      toast.error('Không thá»ƒ cập nhật công thức: ' + (err as Error).message);
+      toast.error('Không thể cập nhật công thức: ' + (err as Error).message);
     }
   };
 
@@ -444,7 +554,7 @@ export function RecipesPage() {
         recipe.id === id ? applyInventoryToRecipe(mapApiRecipe(detail, currentCategory), inventoryItems) : recipe,
       ));
     } catch (err) {
-      toast.error('Không thá»ƒ tải chi tiết công thức: ' + (err as Error).message);
+      toast.error('Không thể tải chi tiết công thức: ' + (err as Error).message);
     }
   };
 
@@ -458,9 +568,9 @@ export function RecipesPage() {
         category: 'Thực phẩm khô',
         emoji: 'ðŸ›’',
       })));
-      toast.success(`Đã thêm ${missing.length} nguyên liá»‡u vào danh sách Ä‘i chợ`);
+      toast.success(`Đã thêm ${missing.length} nguyên liệu vào danh sách đi chợ`);
     } catch (err) {
-      toast.error('Không thá»ƒ thêm vào danh sách Ä‘i chợ: ' + (err as Error).message);
+      toast.error('Không thể thêm vào danh sách đi chợ: ' + (err as Error).message);
     }
   };
 
@@ -468,7 +578,7 @@ export function RecipesPage() {
     if (!selected) return;
     setCookingId(selected.id);
     setActiveStep(0);
-    toast.info('Bắt Ä‘ầu nấu â€” chúc ngon miá»‡ng!');
+    toast.info('Bắt đầu nấu — chúc ngon miệng!');
   };
 
   const finishCooking = async () => {
@@ -485,9 +595,9 @@ export function RecipesPage() {
       setInventoryItems(updatedInventory);
       setRecipes((prev) => prev.map((recipe) => applyInventoryToRecipe(recipe, updatedInventory)));
       setCookingId(null);
-      toast.success('Hoàn thành! Kho nguyên liá»‡u Ä‘ã Ä‘ược cập nhật.');
+      toast.success('Hoàn thành! Kho nguyên liệu đã được cập nhật.');
     } catch (err) {
-      toast.error('Không thá»ƒ cập nhật kho sau khi nấu: ' + (err as Error).message);
+      toast.error('Không thể cập nhật kho sau khi nấu: ' + (err as Error).message);
     }
   };
 
@@ -505,7 +615,7 @@ export function RecipesPage() {
     try {
       const savedRecipes = await recipesApi.add({
         title: data.name,
-        instructions: steps.length ? steps.join('\n') : 'Chưa có hưá»›ng dẫn',
+        instructions: steps.length ? steps.join('\n') : 'Chưa có hướng dẫn',
         image_url: data.image || '',
         ingredients: (ingredients.length ? ingredients : [{ name: 'Chưa thêm nguyên liá»‡u', amount: '', available: true }])
           .map((ing) => ({ name: ing.name, quantity: ing.amount, unit: '' })),
@@ -529,20 +639,22 @@ export function RecipesPage() {
       setAddOpen(false);
       toast.success(`Đã tạo công thức "${data.name}"`);
     } catch (err) {
-      toast.error('Không thá»ƒ tạo công thức: ' + (err as Error).message);
+      toast.error('Không thể tạo công thức: ' + (err as Error).message);
     }
   };
 
-  const handleAISuggest = async (_requirements: string) => {
+  const handleAISuggest = async ({ requirements, selectedIngredients }: AISuggestionPayload) => {
     setAiOpen(false);
 
     try {
-      const sourceInventory = inventoryItems.length
-        ? inventoryItems
-        : (await ingredientsApi.getAll()).ingredients || [];
+      const sourceInventory = selectedIngredients.length
+        ? selectedIngredients
+        : inventoryItems.length
+          ? inventoryItems
+          : (await ingredientsApi.getAll()).ingredients || [];
 
       if (!sourceInventory.length) {
-        toast.error('Kho nguyên liá»‡u Ä‘ang trá»‘ng, hãy thêm nguyên liá»‡u trưá»›c.');
+        toast.error('Kho nguyên liệu đang trống, hãy thêm nguyên liệu trước.');
         return;
       }
 
@@ -552,28 +664,45 @@ export function RecipesPage() {
           quantity: item.quantity,
           unit: item.unit,
         })),
-        10,
+        {
+          ...parsePromptFilters(requirements),
+          limit: 10,
+        },
       );
       const suggestedRecipes = result.dishes.map(mapSuggestionRecipe);
 
       if (!suggestedRecipes.length) {
-        toast.info('Chưa tìm thấy món phù hợp vá»›i kho nguyên liá»‡u hiá»‡n tại.');
+        toast.info('Chưa tìm thấy món phù hợp với kho nguyên liệu hiện tại.');
         return;
       }
 
       setRecipes((prev) => [
+        ...prev.filter((recipe) => recipe.category === 'personal'),
         ...suggestedRecipes,
-        ...prev.filter((recipe) => recipe.author !== 'KHDL Food Recommendation' && recipe.author !== 'EcoPantry DB'),
       ]);
       setCategory('community');
       setSelectedId(suggestedRecipes[0].id);
       const sourceLabel = result.source === 'food-recommendation-api'
         ? 'KHDL Food Recommendation API'
         : 'EcoPantry DB';
-      toast.success('Da goi y ' + suggestedRecipes.length + ' cong thuc tu ' + sourceLabel);
+      toast.success('Đã gợi ý ' + suggestedRecipes.length + ' công thức từ ' + sourceLabel);
     } catch (err) {
-      toast.error('Không thá»ƒ lấy gợi ý món Äƒn: ' + (err as Error).message);
+      toast.error('Không thể lấy gợi ý món ăn: ' + (err as Error).message);
     }
+  };
+
+  const openAISuggestionForm = async () => {
+    try {
+      const latestInventory = (await ingredientsApi.getAll()).ingredients || [];
+      setInventoryItems(latestInventory);
+      setCachedInventoryItems(latestInventory);
+      setRecipes((prev) => prev.map((recipe) => applyInventoryToRecipe(recipe, latestInventory)));
+    } catch (err) {
+      toast.error('Không thể tải kho thực phẩm mới nhất: ' + (err as Error).message);
+      return;
+    }
+
+    setAiOpen(true);
   };
 
   /* â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -636,7 +765,7 @@ export function RecipesPage() {
 
           {/* AI Suggest CTA */}
           <button
-            onClick={() => setAiOpen(true)}
+            onClick={openAISuggestionForm}
             className="w-full inline-flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 ring-1 ring-emerald-100 text-emerald-700 rounded-lg hover:from-emerald-100 hover:to-teal-100 transition-all"
             style={{ fontSize: '0.75rem', fontWeight: 600 }}
           >
@@ -926,7 +1055,13 @@ export function RecipesPage() {
 
       {/* Modals */}
       {addOpen && <AddRecipeForm onClose={() => setAddOpen(false)} onSubmit={handleCreateRecipe} />}
-      {aiOpen && <AISuggestionForm onClose={() => setAiOpen(false)} onSubmit={handleAISuggest} />}
+      {aiOpen && (
+        <AISuggestionForm
+          inventoryItems={inventoryItems}
+          onClose={() => setAiOpen(false)}
+          onSubmit={handleAISuggest}
+        />
+      )}
     </div>
   );
 }
@@ -949,7 +1084,7 @@ interface NewRecipeData {
 function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: NewRecipeData) => void }) {
   const [form, setForm] = useState<NewRecipeData>({
     name: '', servings: '4 người', time: '30 phút',
-    difficulty: 'Dá»…', calories: '', image: '', tags: '',
+    difficulty: 'Dễ', calories: '', image: '', tags: '',
     ingredients: '', steps: '',
   });
 
@@ -979,7 +1114,7 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
               type="text"
               value={form.name}
               onChange={(e) => update('name', e.target.value)}
-              placeholder="VD: Cá kho tá»™"
+              placeholder="VD: Cá kho tộ"
               className="form-input"
             />
           </Field>
@@ -996,7 +1131,7 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Độ khó">
               <select value={form.difficulty} onChange={(e) => update('difficulty', e.target.value as Difficulty)} className="form-input">
-                <option value="Dá»…">Dá»…</option>
+                <option value="Dễ">Dễ</option>
                 <option value="Trung bình">Trung bình</option>
                 <option value="Khó">Khó</option>
               </select>
@@ -1029,7 +1164,7 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
               value={form.steps}
               onChange={(e) => update('steps', e.target.value)}
               rows={5}
-              placeholder={'Sơ chế cá, ưá»›p gia vá»‹ 15 phút\nPhi thơm hành tỏi\n...'}
+              placeholder={'Sơ chế cá, ướp gia vị 15 phút\nPhi thơm hành tỏi\n...'}
               className="form-input"
             />
           </Field>
@@ -1070,21 +1205,44 @@ function AddRecipeForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
 /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Sub-component: AISuggestionForm
 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-function AISuggestionForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (requirements: string) => void }) {
+function AISuggestionForm({
+  inventoryItems,
+  onClose,
+  onSubmit,
+}: {
+  inventoryItems: IngredientItem[];
+  onClose: () => void;
+  onSubmit: (payload: AISuggestionPayload) => void;
+}) {
   const [requirements, setRequirements] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(inventoryItems.map((item) => item.id)));
 
-  const presets = [
-    'Bữa tối nhẹ nhàng cho 4 người',
-    'Món chay dễ làm',
-    'Tận dụng cà chua và cá sắp hết hạn',
-    'Món cay đậm vị miền Trung',
-  ];
+  const allSelected = inventoryItems.length > 0 && selectedIds.size === inventoryItems.length;
+
+  const toggleIngredient = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(inventoryItems.map((item) => item.id)));
+  const clearSelection = () => setSelectedIds(new Set());
 
   const handleSubmit = () => {
-    if (!requirements.trim()) { toast.error('Vui lòng mô tả yêu cầu của bạn'); return; }
+    const selectedIngredients = inventoryItems.filter((item) => selectedIds.has(item.id));
+    if (!selectedIngredients.length) { toast.error('Hãy chọn ít nhất một thực phẩm'); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); onSubmit(requirements.trim()); }, 700);
+    setTimeout(() => {
+      setLoading(false);
+      onSubmit({
+        requirements: requirements.trim(),
+        selectedIngredients,
+      });
+    }, 250);
   };
 
   return (
@@ -1098,7 +1256,7 @@ function AISuggestionForm({ onClose, onSubmit }: { onClose: () => void; onSubmit
             <div>
               <p className="text-slate-900" style={{ fontSize: '1rem', fontWeight: 700 }}>AI Gợi ý công thức</p>
               <p className="text-slate-600 mt-0.5" style={{ fontSize: '0.74rem' }}>
-                Mô tả nhu cầu — AI sẽ chọn công thức phù hợp từ kho thực phẩm
+                Chọn thực phẩm từ kho rồi bấm gợi ý để lấy món phù hợp
               </p>
             </div>
           </div>
@@ -1108,46 +1266,96 @@ function AISuggestionForm({ onClose, onSubmit }: { onClose: () => void; onSubmit
         </div>
 
         <div className="p-6 space-y-4">
-          <Field label="Yêu cầu tuỳ chỉnh">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-slate-700" style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                Thực phẩm đang có trong kho
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={allSelected ? clearSelection : selectAll}
+                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-slate-700 hover:text-emerald-700 rounded-lg transition-colors"
+                  style={{ fontSize: '0.72rem', fontWeight: 600 }}
+                >
+                  {allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                </button>
+                <span className="text-slate-400" style={{ fontSize: '0.7rem' }}>
+                  {selectedIds.size}/{inventoryItems.length} đã chọn
+                </span>
+              </div>
+            </div>
+
+            {inventoryItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-slate-500" style={{ fontSize: '0.8rem' }}>
+                Kho thực phẩm đang trống.
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {inventoryItems.map((item) => {
+                  const checked = selectedIds.has(item.id);
+                  return (
+                    <label
+                      key={item.id}
+                      className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${
+                        checked ? 'bg-emerald-50/70' : 'bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleIngredient(item.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-base shrink-0">
+                        {item.emoji || '🥬'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-slate-900" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                          {item.name}
+                        </p>
+                        <p className="text-slate-500" style={{ fontSize: '0.72rem' }}>
+                          {item.quantity} {item.unit} · {item.category}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <Field label="Gợi ý thêm (không bắt buộc)">
             <textarea
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
-              rows={4}
-              placeholder="VD: Tôi muốn nấu bữa tối ít calo, ưu tiên dùng cá hồi và rau muống đang có sẵn..."
+              rows={3}
+              placeholder="VD: món chay dễ làm, canh nhanh 20 phút..."
               className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all resize-none"
               style={{ fontSize: '0.82rem', lineHeight: 1.55 }}
             />
           </Field>
-
-          <div>
-            <p className="text-slate-600 mb-2" style={{ fontSize: '0.72rem', fontWeight: 600 }}>Hoặc chọn gợi ý nhanh:</p>
-            <div className="flex flex-wrap gap-2">
-              {presets.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setRequirements(p)}
-                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-slate-700 hover:text-emerald-700 rounded-lg transition-colors"
-                  style={{ fontSize: '0.72rem' }}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+          <div className="rounded-xl bg-slate-50 px-3 py-2 text-slate-500" style={{ fontSize: '0.72rem' }}>
+            AI sẽ chỉ dùng những thực phẩm bạn đã chọn để gửi sang hệ gợi ý.
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg" style={{ fontSize: '0.8rem', fontWeight: 500 }}>
-            Huỷ
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg shadow-sm"
-            style={{ fontSize: '0.8rem', fontWeight: 600 }}
-          >
-            {loading ? <>Đang phân tích...</> : <><Sparkles className="w-3.5 h-3.5" /> Gợi ý ngay</>}
-          </button>
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2">
+          <p className="text-slate-500" style={{ fontSize: '0.72rem' }}>
+            {selectedIds.size > 0 ? `Sẵn sàng gợi ý từ ${selectedIds.size} thực phẩm` : 'Chưa chọn thực phẩm nào'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg" style={{ fontSize: '0.8rem', fontWeight: 500 }}>
+              Huỷ
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading || selectedIds.size === 0}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg shadow-sm"
+              style={{ fontSize: '0.8rem', fontWeight: 600 }}
+            >
+              {loading ? <>Đang gợi ý...</> : <><Sparkles className="w-3.5 h-3.5" /> Gợi ý ngay</>}
+            </button>
+          </div>
         </div>
       </div>
     </div>

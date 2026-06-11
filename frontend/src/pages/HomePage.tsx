@@ -123,7 +123,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        await Promise.all([loadRecipeData(), loadAppData()]);
+        await Promise.all([loadRecipeData(true), loadAppData(true)]);
         const {
           inventoryItems: allItems,
           savedRecipes,

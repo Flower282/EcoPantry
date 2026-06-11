@@ -77,15 +77,18 @@ export function InventoryPage() {
   });
 
   // ── Fetch from API ──────────────────────────────────
+  const applyItems = (sourceItems: IngredientItem[]) => {
+    setItems(sourceItems.map((item) => ({
+      ...item,
+      status: computeStatus(item.daysLeft),
+    })));
+  };
+
   const fetchItems = async () => {
     setIsLoading(true);
     try {
       const data = await ingredientsApi.getAll();
-      const fetched = (data.ingredients || []).map((item) => ({
-        ...item,
-        status: computeStatus(item.daysLeft),
-      }));
-      setItems(fetched);
+      applyItems(data.ingredients || []);
     } catch (err) {
       toast.error('Không thể tải danh sách thực phẩm: ' + (err as Error).message);
     } finally {
@@ -162,7 +165,8 @@ export function InventoryPage() {
       } else {
         const result = await ingredientsApi.add(form);
         const created = { ...result.ingredient, status: computeStatus(result.ingredient.daysLeft) };
-        setItems([created, ...items]);
+        const newItems = [created, ...items];
+        setItems(newItems);
         toast.success(`Đã thêm "${form.name}" vào ${storageAreas.find(s => s.id === form.storage)!.label}`);
       }
       setAddOpen(false);
@@ -177,14 +181,8 @@ export function InventoryPage() {
   const handleDelete = async (id: string, name: string) => {
     setIsSaving(true);
     try {
-      let newItems = items.filter(i => i.id !== id);
-      try {
-        await ingredientsApi.delete(id);
-      } catch (err) {
-        if (!isMissingIngredientError(err)) throw err;
-        const result = await ingredientsApi.update(newItems);
-        newItems = (result.ingredients || newItems).map((item) => ({ ...item, status: computeStatus(item.daysLeft) }));
-      }
+      await ingredientsApi.delete(id);
+      const newItems = items.filter(i => i.id !== id);
       setItems(newItems);
       setOpenMenu(null);
       toast.success(`Đã xoá "${name}"`);

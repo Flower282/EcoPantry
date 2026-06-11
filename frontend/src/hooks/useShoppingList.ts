@@ -53,13 +53,8 @@ export function useShoppingList() {
   const [adjustValue, setAdjustValue] = useState("");
 
   useEffect(() => {
-    if (cachedShoppingItems.length || hasLoadedAppData) {
-      setItems(mapApiShoppingItems(cachedShoppingItems));
-      return;
-    }
-
     setIsLoading(true);
-    loadAppData()
+    loadAppData(true)
       .then(() => setItems(mapApiShoppingItems(useAppDataStore.getState().shoppingItems)))
       .catch((err) => toast.error("Không thể tải danh sách đi chợ: " + (err as Error).message))
       .finally(() => setIsLoading(false));

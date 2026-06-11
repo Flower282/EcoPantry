@@ -14,6 +14,9 @@ const requireAuth = require("../middleware/requireAuth");
 
 const router = express.Router();
 
+// Public recipe suggestion endpoint
+router.post("/suggest", suggestRecipes);
+
 // Enable Authorization
 router.use(requireAuth);
 
@@ -28,9 +31,6 @@ router.get("/:id", getRecipe);
 
 // POST recipe
 router.post("/add", addRecipe);
-
-// POST suggest recipes from available ingredients
-router.post("/suggest", suggestRecipes);
 
 // POST like for recipe
 router.post("/save", saveRecipe);

@@ -67,8 +67,6 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [familyGroup, setFamilyGroup] = useState<FamilyGroup | null>(null);
   const [navBadges, setNavBadges] = useState<Partial<Record<TabType, number>>>({});
-  const preloadRecipeData = useRecipeDataStore((state) => state.loadAll);
-  const preloadAppData = useAppDataStore((state) => state.loadAll);
   const cachedInventoryItems = useRecipeDataStore((state) => state.inventoryItems);
   const cachedShoppingItems = useAppDataStore((state) => state.shoppingItems);
   const cachedFamilyGroup = useAppDataStore((state) => state.familyGroup);
@@ -91,16 +89,6 @@ export default function App() {
     ...item,
     badge: navBadges[item.id],
   }));
-
-  useEffect(() => {
-    if (!user) return;
-    Promise.allSettled([
-      preloadRecipeData(),
-      preloadAppData(),
-    ]).catch(() => {
-      // Individual pages still show their own load errors if opened.
-    });
-  }, [user, preloadRecipeData, preloadAppData]);
 
   useEffect(() => {
     if (!user) return;

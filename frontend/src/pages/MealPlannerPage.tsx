@@ -341,7 +341,7 @@ export function MealPlannerPage() {
   useEffect(() => {
     const loadPlannerData = async () => {
       try {
-        await Promise.all([loadRecipeData(), loadAppData()]);
+        await Promise.all([loadRecipeData(true), loadAppData(true)]);
         const { savedRecipes, communityRecipes, inventoryItems: apiIngredients } = useRecipeDataStore.getState();
         const { mealPlans: apiPlans } = useAppDataStore.getState();
         const apiRecipes = [...savedRecipes, ...communityRecipes];

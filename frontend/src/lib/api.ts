@@ -118,6 +118,14 @@ export interface RecipeSuggestionItem extends Partial<RecipeItem> {
   ingredientMatches?: unknown[];
 }
 
+export interface RecipeSuggestOptions {
+  limit?: number;
+  requirements?: string;
+  dishTypeFilter?: string;
+  requiredTypes?: string[];
+  maxMinutes?: number;
+}
+
 export const recipesApi = {
   getAll: () =>
     request<RecipeItem[]>('/recipes'),
@@ -134,10 +142,20 @@ export const recipesApi = {
       body: JSON.stringify({ recipe }),
     }),
 
-  suggest: (ingredients: Array<string | { name?: string; item_name?: string; quantity?: string; unit?: string }>, limit = 10) =>
+  suggest: (
+    ingredients: Array<string | { name?: string; item_name?: string; quantity?: string; unit?: string }>,
+    options: RecipeSuggestOptions = {},
+  ) =>
     request<{ ingredients: string[]; dishes: RecipeSuggestionItem[]; mealSet?: RecipeSuggestionItem[]; source?: string }>('/recipes/suggest', {
       method: 'POST',
-      body: JSON.stringify({ ingredients, limit }),
+      body: JSON.stringify({
+        ingredients,
+        limit: options.limit ?? 10,
+        requirements: options.requirements,
+        dish_type_filter: options.dishTypeFilter,
+        required_types: options.requiredTypes,
+        max_minutes: options.maxMinutes,
+      }),
     }),
 
   delete: (id: number) =>
