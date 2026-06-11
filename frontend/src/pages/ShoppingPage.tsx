@@ -3,7 +3,7 @@ import { compareQty, parseQty } from "@/lib/quantity";
 import { useShoppingList } from "@/hooks/useShoppingList";
 import type { ShoppingCategory } from "@/stores/shoppingListStore";
 import { useEffect, useState } from "react";
-import { groupsApi } from "@/lib/api";
+import { useAppDataStore } from "@/stores/appDataStore";
 
 const seedFamilyMembers = [
   { initials: 'B',  name: 'Bạn', color: 'from-green-400 to-green-600',   online: true },
@@ -50,6 +50,7 @@ function DiffBadge({ diff, deltaText }: { diff: Diff; deltaText: string }) {
 
 export function ShoppingPage() {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const cachedFamilyGroup = useAppDataStore((state) => state.familyGroup);
   const {
     items,
     categories,
@@ -87,22 +88,13 @@ export function ShoppingPage() {
   } = useShoppingList();
 
   useEffect(() => {
-    const loadGroupMembers = async () => {
-      try {
-        const data = await groupsApi.current();
-        const members = data.group.members || [];
-        setFamilyMembers(members.map((member, index) => ({
-          initials: initialsOf(member.name || member.email),
-          name: member.name || member.email,
-          color: memberColors[index % memberColors.length],
-        })));
-      } catch {
-        setFamilyMembers([]);
-      }
-    };
-
-    loadGroupMembers();
-  }, []);
+    const members = cachedFamilyGroup?.members || [];
+    setFamilyMembers(members.map((member, index) => ({
+      initials: initialsOf(member.name || member.email),
+      name: member.name || member.email,
+      color: memberColors[index % memberColors.length],
+    })));
+  }, [cachedFamilyGroup]);
 
   if (completed) {
     return (

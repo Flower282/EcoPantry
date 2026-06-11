@@ -77,6 +77,12 @@ function toFridgeItem(ingredient, group_id, user_uuid) {
   };
 }
 
+async function getGroupItem(req, id) {
+  const group_id = await getOrCreateUserGroup(req.user.id);
+  const item = await FridgeItem.findOne({ where: { id, group_id } });
+  return { group_id, item };
+}
+
 const getIngredients = async (req, res) => {
   try {
     const group_id = await getOrCreateUserGroup(req.user.id);
@@ -93,12 +99,75 @@ const getIngredients = async (req, res) => {
           legacyIngredients.map((ingredient) => toFridgeItem(ingredient, group_id, req.user.id)),
           { returning: true },
         );
+        user.ingredients = [];
+        await user.save();
       }
     }
 
     res.status(200).json({ ingredients: items.map(toIngredient) });
   } catch (error) {
     console.error("Error fetching ingredients:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const addIngredient = async (req, res) => {
+  try {
+    const user_uuid = req.user.id;
+    const group_id = await getOrCreateUserGroup(user_uuid);
+    const ingredient = req.body.ingredient || req.body;
+
+    if (!ingredient.name || !String(ingredient.name).trim()) {
+      return res.status(400).json({ error: "Ingredient name is required" });
+    }
+
+    const created = await FridgeItem.create(toFridgeItem(ingredient, group_id, user_uuid));
+    await User.update({ ingredients: [] }, { where: { id: user_uuid } });
+
+    res.status(201).json({ ingredient: toIngredient(created) });
+  } catch (error) {
+    console.error("Error adding ingredient:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const updateIngredient = async (req, res) => {
+  try {
+    const ingredient = req.body.ingredient || req.body;
+    const { group_id, item } = await getGroupItem(req, req.params.id);
+
+    if (!item) {
+      return res.status(404).json({ error: "No such ingredient" });
+    }
+
+    if (!ingredient.name || !String(ingredient.name).trim()) {
+      return res.status(400).json({ error: "Ingredient name is required" });
+    }
+
+    await item.update(toFridgeItem(ingredient, group_id, req.user.id));
+    await User.update({ ingredients: [] }, { where: { id: req.user.id } });
+
+    res.status(200).json({ ingredient: toIngredient(item) });
+  } catch (error) {
+    console.error("Error updating ingredient:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const deleteIngredient = async (req, res) => {
+  try {
+    const { item } = await getGroupItem(req, req.params.id);
+
+    if (!item) {
+      return res.status(404).json({ error: "No such ingredient" });
+    }
+
+    await item.destroy();
+    await User.update({ ingredients: [] }, { where: { id: req.user.id } });
+
+    res.status(200).json({ id: String(req.params.id) });
+  } catch (error) {
+    console.error("Error deleting ingredient:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -118,6 +187,8 @@ const updateIngredients = async (req, res) => {
       ingredients.map((ingredient) => toFridgeItem(ingredient, group_id, user_uuid)),
       { returning: true },
     );
+
+    await User.update({ ingredients: [] }, { where: { id: user_uuid } });
 
     res.status(200).json({ ingredients: created.map(toIngredient) });
   } catch (error) {
@@ -155,7 +226,7 @@ const generateIngredients = async (req, res) => {
     //       content: [
     //         {
     //           type: "text",
-    //           text: `This is an image of a fridge, cupboard, or pantry. Please list the ingredients you see...`,
+    //           text: This is an image of a fridge, cupboard, or pantry. Please list the ingredients you see...,
     //         },
     //         {
     //           type: "image_url",
@@ -191,6 +262,9 @@ const generateIngredients = async (req, res) => {
 
 module.exports = {
   getIngredients,
+  addIngredient,
+  updateIngredient,
+  deleteIngredient,
   updateIngredients,
   generateIngredients,
 };

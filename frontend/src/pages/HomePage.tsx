@@ -6,7 +6,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { TabType } from '@/lib/tabs';
-import { ingredientsApi, mealPlanApi, recipesApi, type IngredientItem, type MealPlanItem, type RecipeItem } from '@/lib/api';
+import type { IngredientItem, MealPlanItem, RecipeItem } from '@/lib/api';
+import { useAppDataStore } from '@/stores/appDataStore';
+import { useRecipeDataStore } from '@/stores/recipeDataStore';
 
 interface HomePageProps {
   onNavigate: (tab: TabType) => void;
@@ -114,20 +116,22 @@ export function HomePage({ onNavigate }: HomePageProps) {
   const [cookableCount, setCookableCount] = useState(0);
   const [plannedMeals, setPlannedMeals] = useState(0);
   const [expiredCount, setExpiredCount] = useState(0);
+  const loadRecipeData = useRecipeDataStore((state) => state.loadAll);
+  const loadAppData = useAppDataStore((state) => state.loadAll);
 
   // Fetch real data from API
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [ingredientData, savedRecipesResult, communityRecipesResult, apiPlans] = await Promise.all([
-          ingredientsApi.getAll(),
-          recipesApi.getAll(),
-          recipesApi.getCommunity().catch(() => []),
-          mealPlanApi.getAll(),
-        ]);
+        await Promise.all([loadRecipeData(true), loadAppData(true)]);
+        const {
+          inventoryItems: allItems,
+          savedRecipes,
+          communityRecipes,
+        } = useRecipeDataStore.getState();
+        const { mealPlans: apiPlans } = useAppDataStore.getState();
 
-        const allItems: IngredientItem[] = ingredientData.ingredients || [];
-        const apiRecipes = [...savedRecipesResult, ...communityRecipesResult];
+        const apiRecipes = [...savedRecipes, ...communityRecipes];
         const todayMeals = mapTodayPlans(apiPlans);
 
         // Expiring items (daysLeft <= 3)
@@ -186,7 +190,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
       }
     };
     fetchData();
-  }, []);
+  }, [loadRecipeData, loadAppData]);
 
   const markCooked = (id: number, name: string) => {
     setMeals(prev => prev.map(m => m.id === id ? { ...m, status: 'done' as const } : m));

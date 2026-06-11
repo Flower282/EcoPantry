@@ -5,7 +5,9 @@ import {
   Flame, ChevronLeft, ChevronRight, TrendingUp, Trash2, Search,
   CheckCircle2,
 } from 'lucide-react';
-import { ingredientsApi, mealPlanApi, recipesApi, type MealPlanItem, type RecipeItem } from '@/lib/api';
+import { mealPlanApi, type MealPlanItem, type RecipeItem } from '@/lib/api';
+import { useAppDataStore } from '@/stores/appDataStore';
+import { useRecipeDataStore } from '@/stores/recipeDataStore';
 
 /* ─────────────────────────────────────────────────
    Types & Mock Data
@@ -333,15 +335,16 @@ export function MealPlannerPage() {
 
   // Drag-drop
   const [draggingRecipeId, setDraggingRecipeId] = useState<number | null>(null);
+  const loadRecipeData = useRecipeDataStore((state) => state.loadAll);
+  const loadAppData = useAppDataStore((state) => state.loadAll);
 
   useEffect(() => {
     const loadPlannerData = async () => {
       try {
-        const [apiRecipes, apiIngredients, apiPlans] = await Promise.all([
-          recipesApi.getAll(),
-          ingredientsApi.getAll(),
-          mealPlanApi.getAll(),
-        ]);
+        await Promise.all([loadRecipeData(true), loadAppData(true)]);
+        const { savedRecipes, communityRecipes, inventoryItems: apiIngredients } = useRecipeDataStore.getState();
+        const { mealPlans: apiPlans } = useAppDataStore.getState();
+        const apiRecipes = [...savedRecipes, ...communityRecipes];
 
         const plannedRecipes = apiPlans
           .map((item) => item.Recipe)
@@ -354,7 +357,7 @@ export function MealPlannerPage() {
         setRecipeList(mappedRecipes);
         setFavorites(new Set(apiRecipes.map((r) => r.id)));
 
-        setInventoryItems((apiIngredients.ingredients || []).map((item) => ({
+        setInventoryItems(apiIngredients.map((item) => ({
           name: item.name,
           daysLeft: item.daysLeft,
           quantity: `${item.quantity}${item.unit ? ` ${item.unit}` : ''}`,
@@ -386,7 +389,7 @@ export function MealPlannerPage() {
     };
 
     loadPlannerData();
-  }, []);
+  }, [loadRecipeData, loadAppData]);
 
   /* Match metadata for each recipe */
   const recipeMeta = useMemo(() => {

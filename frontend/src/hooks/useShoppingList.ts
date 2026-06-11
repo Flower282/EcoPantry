@@ -8,10 +8,24 @@ import {
   type ShoppingItem,
   useShoppingListStore,
 } from "@/stores/shoppingListStore";
-import { shoppingApi } from "@/lib/api";
+import { shoppingApi, type ShoppingItem as ApiShoppingItem } from "@/lib/api";
+import { useAppDataStore } from "@/stores/appDataStore";
 
 function isShoppingCategory(value: unknown): value is ShoppingCategory {
   return typeof value === "string" && shoppingCategories.includes(value as ShoppingCategory);
+}
+
+function mapApiShoppingItems(apiItems: ApiShoppingItem[]): ShoppingItem[] {
+  return apiItems.map((item) => ({
+    id: item.id,
+    name: item.item_name,
+    category: isShoppingCategory(item.category) ? item.category : shoppingCategories[0],
+    checked: item.is_purchased,
+    quantity: `${item.quantity}${item.unit ? " " + item.unit : ""}`,
+    addedBy: "Bạn",
+    actualQuantity: undefined,
+    note: undefined,
+  }));
 }
 
 export function useShoppingList() {
@@ -30,35 +44,21 @@ export function useShoppingList() {
   const [completed, setCompleted] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const cachedShoppingItems = useAppDataStore((s) => s.shoppingItems);
+  const hasLoadedAppData = useAppDataStore((s) => s.hasLoaded);
+  const loadAppData = useAppDataStore((s) => s.loadAll);
+  const setCachedShoppingItems = useAppDataStore((s) => s.setShoppingItems);
 
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
   const [adjustValue, setAdjustValue] = useState("");
 
-  // Fetch from API on mount
   useEffect(() => {
-    const fetchItems = async () => {
-      setIsLoading(true);
-      try {
-        const apiItems = await shoppingApi.getAll();
-        const mapped: ShoppingItem[] = apiItems.map((item) => ({
-          id: item.id,
-          name: item.item_name,
-          category: isShoppingCategory(item.category) ? item.category : shoppingCategories[0],
-          checked: item.is_purchased,
-          quantity: `${item.quantity}${item.unit ? " " + item.unit : ""}`,
-          addedBy: "Bạn",
-          actualQuantity: undefined,
-          note: undefined,
-        }));
-        setItems(mapped);
-      } catch (err) {
-        toast.error("Không thể tải danh sách đi chợ: " + (err as Error).message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchItems();
-  }, [setItems]);
+    setIsLoading(true);
+    loadAppData(true)
+      .then(() => setItems(mapApiShoppingItems(useAppDataStore.getState().shoppingItems)))
+      .catch((err) => toast.error("Không thể tải danh sách đi chợ: " + (err as Error).message))
+      .finally(() => setIsLoading(false));
+  }, [cachedShoppingItems, hasLoadedAppData, loadAppData, setItems]);
 
   const startAdjust = (item: ShoppingItem) => {
     setAdjustingId(item.id);
@@ -80,6 +80,9 @@ export function useShoppingList() {
     confirmPurchase(id, value);
     try {
       await shoppingApi.toggle(id);
+      setCachedShoppingItems(useAppDataStore.getState().shoppingItems.map((item) =>
+        item.id === id ? { ...item, is_purchased: !item.is_purchased } : item,
+      ));
     } catch { /* silent */ }
 
     if (it) {
@@ -96,7 +99,12 @@ export function useShoppingList() {
   const handleCheckboxClick = async (item: ShoppingItem) => {
     if (item.checked) {
       uncheckItem(item.id);
-      try { await shoppingApi.toggle(item.id); } catch { /* silent */ }
+      try {
+        await shoppingApi.toggle(item.id);
+        setCachedShoppingItems(useAppDataStore.getState().shoppingItems.map((apiItem) =>
+          apiItem.id === item.id ? { ...apiItem, is_purchased: !apiItem.is_purchased } : apiItem,
+        ));
+      } catch { /* silent */ }
       return;
     }
     if (adjustingId === item.id) cancelAdjust();
@@ -108,6 +116,7 @@ export function useShoppingList() {
     toast.success(`Đã xoá "${name}" khỏi danh sách`);
     try {
       await shoppingApi.delete(id);
+      setCachedShoppingItems(useAppDataStore.getState().shoppingItems.filter((item) => item.id !== id));
     } catch (err) {
       toast.error("Xoá thất bại: " + (err as Error).message);
     }
@@ -135,6 +144,7 @@ export function useShoppingList() {
         quantity: qtyStr,
         addedBy: "Bạn",
       });
+      setCachedShoppingItems([created, ...useAppDataStore.getState().shoppingItems]);
 
       toast.success(`Đã thêm "${newItemName.trim()}" vào ${newItemCategory}`);
       setNewItemName("");
@@ -235,6 +245,7 @@ export function useShoppingList() {
     const purchasedCount = checkedCount;
     try {
       await shoppingApi.clearPurchased();
+      setCachedShoppingItems(useAppDataStore.getState().shoppingItems.filter((item) => !item.is_purchased));
       setItems(items.filter((item) => !item.checked));
       setCompletedCount(purchasedCount);
       setCompleted(true);

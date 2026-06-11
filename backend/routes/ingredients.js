@@ -2,6 +2,9 @@ const express = require("express");
 const multer = require("multer");
 const {
   getIngredients,
+  addIngredient,
+  updateIngredient,
+  deleteIngredient,
   updateIngredients,
   generateIngredients,
 } = require("../controllers/ingredientController");
@@ -14,6 +17,16 @@ router.use(requireAuth);
 
 // GET all ingredients
 router.get("/", getIngredients);
+
+// POST one ingredient
+router.post("/", addIngredient);
+
+// PATCH one ingredient
+router.patch("/:id", updateIngredient);
+router.put("/:id", updateIngredient);
+
+// DELETE one ingredient
+router.delete("/:id", deleteIngredient);
 
 // POST a new ingredients list
 router.post("/update", updateIngredients);
