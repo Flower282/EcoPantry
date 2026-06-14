@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent, type MouseEvent } from 'react';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { ingredientsApi, type IngredientItem } from '@/lib/api';
@@ -61,13 +61,13 @@ function StatusBadge({ status, daysLeft }: { status: IngredientItem['status']; d
   return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full" style={{ fontSize: '0.65rem', fontWeight: 600 }}>Tốt</span>;
 }
 
-export function InventoryPage() {
+export function InventoryPage({ initialSearch = '', onClearSearch }: { initialSearch?: string; onClearSearch?: () => void }) {
   const [items, setItems] = useState<IngredientItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedStorage, setSelectedStorage] = useState<StorageArea>('cold');
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<IngredientItem | null>(null);
@@ -98,6 +98,28 @@ export function InventoryPage() {
 
   useEffect(() => { fetchItems(); }, []);
 
+  // Sync search from header
+  useEffect(() => {
+    if (initialSearch) {
+      setSearchQuery(initialSearch);
+      setSelectedStatus('all');
+      onClearSearch?.();
+    }
+  }, [initialSearch]);
+
+  // Auto-switch to the corresponding storage tab when searching
+  useEffect(() => {
+    if (searchQuery.trim() && items.length > 0) {
+      const q = searchQuery.toLowerCase();
+      const firstMatch = items.find(item => 
+        item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q)
+      );
+      if (firstMatch && firstMatch.storage !== selectedStorage) {
+        setSelectedStorage(firstMatch.storage);
+      }
+    }
+  }, [searchQuery, items]);
+
   // ── Persist to API ──────────────────────────────────
   const persistItems = async (newItems: IngredientItem[]) => {
     setIsSaving(true);
@@ -111,8 +133,9 @@ export function InventoryPage() {
   };
 
   // ── Filter ──────────────────────────────────────────
+  const isSearching = searchQuery.trim().length > 0;
   const filtered = items.filter((item) => {
-    const matchStorage = item.storage === selectedStorage;
+    const matchStorage = isSearching || item.storage === selectedStorage;
     const matchStatus = selectedStatus === 'all' || item.status === selectedStatus;
     const matchSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.category.toLowerCase().includes(searchQuery.toLowerCase());
     return matchStorage && matchStatus && matchSearch;
@@ -123,13 +146,16 @@ export function InventoryPage() {
 
   const openAdd = () => {
     setEditItem(null);
+    setIsSaving(false);
     setForm({ name: '', category: 'Rau củ', quantity: '', unit: 'gram', emoji: '🥦', storage: selectedStorage, daysLeft: 7 });
     setAddOpen(true);
   };
 
   const openEdit = (item: IngredientItem) => {
     setEditItem(item);
-    setForm({ name: item.name, category: item.category, quantity: item.quantity, unit: item.unit, emoji: item.emoji, storage: item.storage, daysLeft: item.daysLeft });
+    setIsSaving(false);
+    const safeDaysLeft = Number.isFinite(item.daysLeft) ? item.daysLeft : 7;
+    setForm({ name: item.name, category: item.category, quantity: String(item.quantity), unit: item.unit, emoji: item.emoji, storage: item.storage, daysLeft: safeDaysLeft });
     setAddOpen(true);
     setOpenMenu(null);
   };
@@ -140,42 +166,67 @@ export function InventoryPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.quantity.trim()) {
+    if (isSaving) {
+      console.log('[handleSave] blocked: isSaving=true');
+      return;
+    }
+
+    if (!form.name.trim() || !String(form.quantity).trim()) {
       toast.error('Vui lòng nhập tên và số lượng');
       return;
     }
 
+    const safeDaysLeft = Number.isFinite(Number(form.daysLeft)) ? Number(form.daysLeft) : 7;
+    const safeForm = { ...form, daysLeft: safeDaysLeft };
+    console.log('[handleSave] start', { editItem: editItem?.id, safeForm });
+
     setIsSaving(true);
     try {
       if (editItem) {
-        const optimistic = { ...editItem, ...form, status: computeStatus(form.daysLeft) };
+        console.log('[handleSave] calling updateOne id=', editItem.id);
+        const optimistic = { ...editItem, ...safeForm, status: computeStatus(safeForm.daysLeft) };
         let newItems: IngredientItem[];
         try {
-          const result = await ingredientsApi.updateOne(editItem.id, form);
+          const result = await ingredientsApi.updateOne(editItem.id, safeForm);
+          console.log('[handleSave] updateOne success', result);
           const updated = { ...result.ingredient, status: computeStatus(result.ingredient.daysLeft) };
           newItems = items.map(i => i.id === editItem.id ? updated : i);
         } catch (err) {
+          console.warn('[handleSave] updateOne failed:', (err as Error).message, 'isMissing:', isMissingIngredientError(err));
           if (!isMissingIngredientError(err)) throw err;
           newItems = items.map(i => i.id === editItem.id ? optimistic : i);
           const result = await ingredientsApi.update(newItems);
           newItems = (result.ingredients || newItems).map((item) => ({ ...item, status: computeStatus(item.daysLeft) }));
         }
         setItems(newItems);
-        toast.success(`Đã cập nhật "${form.name}"`);
+        toast.success(`Đã cập nhật "${safeForm.name}"`);
       } else {
-        const result = await ingredientsApi.add(form);
+        const result = await ingredientsApi.add(safeForm);
         const created = { ...result.ingredient, status: computeStatus(result.ingredient.daysLeft) };
         const newItems = [created, ...items];
         setItems(newItems);
-        toast.success(`Đã thêm "${form.name}" vào ${storageAreas.find(s => s.id === form.storage)!.label}`);
+        toast.success(`Đã thêm "${safeForm.name}" vào ${storageAreas.find(s => s.id === safeForm.storage)!.label}`);
       }
       setAddOpen(false);
       setEditItem(null);
     } catch (err) {
+      console.error('[handleSave] OUTER ERROR:', err);
       toast.error('Lưu thất bại: ' + (err as Error).message);
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSaveSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    console.log('[handleSaveSubmit] form submit fired, isSaving=', isSaving, 'editItem=', editItem?.id);
+    void handleSave();
+  };
+
+  const handleSaveClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void handleSave();
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -304,14 +355,19 @@ export function InventoryPage() {
             {filtered.map((item) => (
               <div key={item.id} className={`grid grid-cols-12 gap-4 px-5 py-3.5 items-center hover:bg-gray-50/60 transition-colors ${item.status === 'expired' ? 'bg-red-50/30' : item.status === 'expiring' ? 'bg-orange-50/20' : ''}`}>
                 <div className="col-span-4 flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${item.status === 'expired' ? 'bg-red-100' : item.status === 'expiring' ? 'bg-orange-100' : 'bg-gray-100'}`}>
-                    <span style={{ fontSize: '1.3rem', opacity: item.status === 'expired' ? 0.4 : 1 }}>{item.emoji}</span>
-                  </div>
+
                   <div>
                     <p className={item.status === 'expired' ? 'text-gray-400 line-through' : 'text-gray-900'} style={{ fontSize: '0.85rem', fontWeight: 500 }}>
                       {item.name}
                     </p>
-                    <p className="text-gray-400" style={{ fontSize: '0.7rem' }}>Thêm {item.addedDate}</p>
+                    <p className="text-gray-400 flex items-center gap-1.5" style={{ fontSize: '0.7rem' }}>
+                      <span>Thêm {item.addedDate}</span>
+                      {isSearching && (
+                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded" style={{ fontSize: '0.62rem', fontWeight: 500 }}>
+                          {storageAreas.find(s => s.id === item.storage)?.label}
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
 
@@ -333,18 +389,41 @@ export function InventoryPage() {
                   <StatusBadge status={item.status} daysLeft={item.daysLeft} />
                   <div className="relative ml-1">
                     <button
-                      onClick={() => setOpenMenu(openMenu === item.id ? null : item.id)}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenu(openMenu === item.id ? null : item.id);
+                      }}
                       className="px-2 py-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                       style={{ fontSize: '0.95rem', fontWeight: 700 }}
                     >
                       ⋯
                     </button>
                     {openMenu === item.id && (
-                      <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1">
-                        <button className="w-full text-left px-3 py-2 text-gray-700 hover:bg-gray-50 transition-colors" style={{ fontSize: '0.78rem' }} onClick={() => openEdit(item)}>
+                      <div
+                        className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
+                          style={{ fontSize: '0.78rem' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(item);
+                          }}
+                        >
                           Chỉnh sửa
                         </button>
-                        <button className="w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 transition-colors" style={{ fontSize: '0.78rem' }} onClick={() => handleDelete(item.id, item.name)}>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 transition-colors"
+                          style={{ fontSize: '0.78rem' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(item.id, item.name);
+                          }}
+                        >
                           Xoá
                         </button>
                       </div>
@@ -369,7 +448,11 @@ export function InventoryPage() {
       {/* Add/Edit Modal */}
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAddOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <form
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleSaveSubmit}
+          >
             <div className="px-5 py-4 border-b border-gray-100">
               <p className="text-gray-900" style={{ fontSize: '0.95rem', fontWeight: 600 }}>
                 {editItem ? 'Chỉnh sửa thực phẩm' : 'Thêm thực phẩm mới'}
@@ -402,19 +485,12 @@ export function InventoryPage() {
                   {categoryOptions.map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-700 mb-1" style={{ fontSize: '0.75rem', fontWeight: 500 }}>Emoji</label>
-                  <input value={form.emoji} onChange={(e) => setForm({ ...form, emoji: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200 text-center" style={{ fontSize: '1.2rem' }} />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-1" style={{ fontSize: '0.75rem', fontWeight: 500 }}>Khu vực</label>
-                  <select value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value as StorageArea })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-200" style={{ fontSize: '0.82rem' }}>
-                    {storageAreas.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-gray-700 mb-1" style={{ fontSize: '0.75rem', fontWeight: 500 }}>Khu vực</label>
+                <select value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value as StorageArea })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-200" style={{ fontSize: '0.82rem' }}>
+                  {storageAreas.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
               </div>
               <div>
                 <label className="block text-gray-700 mb-1" style={{ fontSize: '0.75rem', fontWeight: 500 }}>Còn lại (ngày)</label>
@@ -423,15 +499,20 @@ export function InventoryPage() {
               </div>
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setAddOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50" style={{ fontSize: '0.82rem' }}>
+              <button type="button" onClick={() => setAddOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50" style={{ fontSize: '0.82rem' }}>
                 Huỷ
               </button>
-              <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 flex items-center gap-2" style={{ fontSize: '0.82rem', fontWeight: 500 }}>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 flex items-center gap-2"
+                style={{ fontSize: '0.82rem', fontWeight: 500 }}
+              >
                 {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {editItem ? 'Lưu thay đổi' : 'Thêm vào kho'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

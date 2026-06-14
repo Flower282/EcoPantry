@@ -32,12 +32,6 @@ const pageTitles: Record<TabType, { title: string; subtitle: string }> = {
   shopping:  { title: 'Danh sách đi chợ',   subtitle: 'Mua sắm thông minh cùng gia đình' },
 };
 
-const notifications = [
-  { id: 1, title: 'Cà chua bi sắp hết hạn', desc: 'Còn 1 ngày — hãy dùng ngay hôm nay', time: '2 phút trước', unread: true },
-  { id: 2, title: 'Mẹ đã thêm Rau cải vào giỏ', desc: 'Danh sách đi chợ đã được cập nhật', time: '2 giờ trước', unread: true },
-  { id: 3, title: 'Cá hồi phi lê đã hết hạn', desc: 'Vui lòng kiểm tra và xoá khỏi kho', time: 'Hôm qua', unread: false },
-];
-
 function getInitials(value: string | undefined) {
   return (value || 'EcoPantry')
     .trim()
@@ -60,6 +54,7 @@ export default function App() {
   const [activeTab,  setActiveTab]  = useState<TabType>('home');
   const [collapsed,  setCollapsed]  = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [inventorySearch, setInventorySearch] = useState('');
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -133,7 +128,10 @@ export default function App() {
   const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    toast.info(`Đang tìm kiếm: "${searchQuery}"`);
+    setActiveTab('inventory');
+    setInventorySearch(searchQuery);
+    setSearchQuery('');
+    toast.info(`Tìm kiếm: "${searchQuery}" trong kho thực phẩm`);
   };
 
   return (
@@ -322,7 +320,7 @@ export default function App() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm kiếm thực phẩm, công thức..."
+              placeholder="Tìm kiếm thực phẩm..."
               className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
               style={{ fontSize: '0.78rem' }}
             />
@@ -426,7 +424,7 @@ export default function App() {
 
         <main className="flex-1 overflow-auto">
           {activeTab === 'home'      && <HomePage onNavigate={setActiveTab} />}
-          {activeTab === 'inventory' && <InventoryPage />}
+          {activeTab === 'inventory' && <InventoryPage initialSearch={inventorySearch} onClearSearch={() => setInventorySearch('')} />}
           {activeTab === 'recipes'   && <RecipesPage />}
           {activeTab === 'planner'   && <MealPlannerPage />}
           {activeTab === 'shopping'  && <ShoppingPage />}

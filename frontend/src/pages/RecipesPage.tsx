@@ -1348,9 +1348,7 @@ function AISuggestionForm({
                         onChange={() => toggleIngredient(item.id)}
                         className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-base shrink-0">
-                        {item.emoji || '🥬'}
-                      </div>
+
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-slate-900" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
                           {item.name}
@@ -1366,16 +1364,7 @@ function AISuggestionForm({
             )}
           </div>
 
-          <Field label="Gợi ý thêm (không bắt buộc)">
-            <textarea
-              value={requirements}
-              onChange={(e) => setRequirements(e.target.value)}
-              rows={3}
-              placeholder="VD: món chay dễ làm, canh nhanh 20 phút..."
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all resize-none"
-              style={{ fontSize: '0.82rem', lineHeight: 1.55 }}
-            />
-          </Field>
+
           <div className="rounded-xl bg-slate-50 px-3 py-2 text-slate-500" style={{ fontSize: '0.72rem' }}>
             AI sẽ chỉ dùng những thực phẩm bạn đã chọn để gửi sang hệ gợi ý.
           </div>

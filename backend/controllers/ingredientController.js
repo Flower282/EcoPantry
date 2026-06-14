@@ -145,6 +145,7 @@ const updateIngredient = async (req, res) => {
     }
 
     await item.update(toFridgeItem(ingredient, group_id, req.user.id));
+    await item.reload();
     await User.update({ ingredients: [] }, { where: { id: req.user.id } });
 
     res.status(200).json({ ingredient: toIngredient(item) });
